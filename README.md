@@ -1,79 +1,106 @@
-# Arch Health Script 🩺
+# Linux Health Check Scripts 🩺
 
-Just a little script I made to quickly check the health of my Arch Linux setup (works on EndeavourOS, etc. too). It runs a bunch of checks in parallel to be super fast and spits out a nice report.
+![Maintained](https://img.shields.io/badge/Maintained-Yes-green?style=for-the-badge)
+![Language](https://img.shields.io/badge/Made%20with-Bash-blue?style=for-the-badge&logo=gnu-bash)
+![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
+
+A collection of health check and diagnostic reporting scripts for major Linux families. This toolkit is designed to be fast, safe, and provide clear, actionable insights into your system's condition.
+
+Currently supported systems:
+* **Arch Linux** & derivatives (EndeavourOS, Manjaro, etc.)
+* **Debian/Ubuntu** & derivatives (Linux Mint, Pop!_OS, etc.)
 
 ---
 
-## 📸 Demo
+## ✨ Key Features (Common to All Scripts)
 
-*(Its new repo okay, patient)*
-
----
-
-## ✨ So, what's it do?
-
-Basically, it checks the important stuff:
-* **System & Kernel**: What kernel you're running.
-* **Hardware**: Basic CPU, RAM, and disk info.
-* **Drivers**: Looks for devices without drivers.
-* **Packages**: Finds orphaned packages and files missing from packages.
-* **Services**: Checks for any `systemd` services that have failed.
-* **Logs**: Scans `journalctl` for recent errors or warnings.
-* **Scoring**: Gives you a simple 0-100 score based on what it finds.
+* **Comprehensive Checks**: Analyzes Kernel, Hardware, Drivers, Packages, Services, and system logs.
+* **Fast Parallel Execution**: Runs checks simultaneously in a safe, isolated manner to provide reports quickly.
+* **Weighted Health Score**: Gives a 0-100 score with intelligent weighting for different types of issues.
+* **Multi-Format Reports**: Automatically generates reports in `.log` (colorized), `.md` (Markdown), and `.html` formats.
+* **Smart Dependency Handling**: Detects missing tools and suggests an installation command without crashing the script.
+* **Safe by Design**: Never runs `sudo` commands automatically, ensuring user control and system security.
 
 ---
 
 ## 🚀 Getting Started
 
-Getting started is easy.
-
-1.  **Clone the repo:**
+1.  **Clone this repository:**
     ```bash
-    git clone https://github.com/afif25fradana/arch-health-script.git
-    cd arch-health-script
+    git clone [https://github.com/afif25fradana/health-check.git](https://github.com/afif25fradana/health-check.git)
+    cd health-check
     ```
 
-2.  **Make it runnable:**
+2.  **Make the scripts executable:**
     ```bash
-    chmod +x arch_health_check.sh
+    chmod +x arch-check.sh ubuntu-check.sh
     ```
 
-3.  **Run it!**
-    ```bash
-    ./arch_health_check.sh
-    ```
-    I recommend sending the reports to a dedicated folder:
-    ```bash
-    ./arch_health_check.sh -o reports/
-    ```
+3.  **Run the script for your system!** See the sections below for details.
 
 ---
 
-## 💡 Options
+## Arch Linux Version (`arch-check.sh`)
 
-You can use these flags to change how it runs:
+![Arch Linux](https://img.shields.io/badge/Arch%20Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white)
 
-| Flag | Long Version | What it Does |
-| :--- | :--- | :--- |
-| `-f` | `--fast` | Skips the slow checks. |
-| `-s` | `--summary` | Only shows a short summary. |
-| `-c` | `--no-color` | Turns off the colors. |
-| `-o` | `--output-dir` | Tells it where to save reports. |
-| `-v` | `--version` | Shows the script version. |
-| `-h` | `--help` | Shows the help message. |
+A health check script tailored for `pacman`-based systems.
 
----
+#### ▶️ Usage
+```bash
+./arch-check.sh [OPTIONS]
+```
+**Example:** Save reports to a `reports/` directory.
+```bash
+./arch-check.sh -o reports/
+```
 
-## 📦 Does it need anything?
-
-For everything to work, it's best if you have these installed:
+#### 📦 Dependencies
+For a full report, it's recommended to have these packages installed:
 * `pciutils` (for `lspci`)
 * `lm-sensors` (for `sensors`)
 
-If you're missing something, the script will tell you at the end. No stress.
+---
+
+## debianUbuntu / Debian Version (`ubuntu-check.sh`)
+
+![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)
+
+A health check script adapted for `apt`-based systems.
+
+#### ▶️ Usage
+```bash
+./ubuntu-check.sh [OPTIONS]
+```
+**Example:** Run in summary mode.
+```bash
+./ubuntu-check.sh -s
+```
+
+#### 📦 Dependencies
+For the most detailed report, it's recommended to have these packages installed:
+* `pciutils` (for `lspci`)
+* `lm-sensors` (for `sensors`)
+* `deborphan` (for a thorough orphaned package check)
+* `debsums` (for checking package file integrity)
+
+---
+
+## 💡 Shared CLI Options
+
+Both scripts accept the same set of command-line options for a consistent experience.
+
+| Flag | Long Version    | Description                                  |
+| :--- | :-------------- | :------------------------------------------- |
+| `-f` | `--fast`        | Skips slower, more intensive checks.         |
+| `-s` | `--summary`     | Displays only a brief summary in the terminal. |
+| `-c` | `--no-color`    | Disables colorized output.                   |
+| `-o` | `--output-dir`  | Specifies the directory to save report files. |
+| `-v` | `--version`     | Shows the script version and exits.          |
+| `-h` | `--help`        | Shows the help message.                      |
 
 ---
 
 ## 📜 License
 
-It's under the **MIT License**. Do whatever you want with it.
+This project is licensed under the **MIT License**. See the `LICENSE` file for full details.
