@@ -1,45 +1,40 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Arch Linux Health & Troubleshoot Report - v3.3 (Refactored)
+# Arch Linux Health Check
 # ============================================================================
 
 set -euo pipefail
 
-# --- DITAMBAHKAN: Memanggil library fungsi bersama ---
-# Menentukan direktori script dan memanggil functions.sh
+# --- Pull in the shared functions ---
 SCRIPT_DIR_SELF=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-# shellcheck source=../../common/functions.sh
-source "$SCRIPT_DIR_SELF/../../common/functions.sh"
+# shellcheck source=../common/functions.sh
+source "$SCRIPT_DIR_SELF/../common/functions.sh"
 
-# --- Configuration ---
+# --- Script Config ---
 SCRIPT_NAME="arch-health-check"
-SCRIPT_VERSION="3.3"
+SCRIPT_VERSION="3.5"
 LOG_DIR="$HOME/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# --- CLI Options ---
 opt_fast_mode=false
 opt_no_color=false
 opt_summary_mode=false
 opt_output_dir="$LOG_DIR"
 
+# --- CLI Options & Help ---
 show_usage() {
-    # ... (Fungsi show_usage tetap sama)
     echo "Usage: $0 [options]"
     echo "  -f, --fast        Skip slower checks (like pacman -Qk)."
-    echo "  -c, --no-color    Disable colorized output."
-    echo "  -s, --summary     Display only a brief summary on the terminal."
-    echo "  -o, --output-dir  Specify a directory for reports (default: ~/logs)."
-    echo "  -v, --version     Show script version and exit."
+    echo "  -c, --no-color    Disable color output."
+    echo "  -s, --summary     Only show a brief summary."
+    echo "  -o, --output-dir  Where to save reports (default: ~/logs)."
+    echo "  -v, --version     Show script version."
     echo "  -h, --help        Show this help message."
     exit 0
 }
 
-# --- Robust CLI Argument Parsing with getopt ---
 OPTS=$(getopt -o fcs:o:vh --long fast,no-color,summary,output-dir:,version,help -n "$0" -- "$@")
 if [ $? != 0 ]; then echo "Failed parsing options." >&2; exit 1; fi
 eval set -- "$OPTS"
-
 while true; do
     case "$1" in
         -f|--fast) opt_fast_mode=true; shift ;;
@@ -53,106 +48,102 @@ while true; do
     esac
 done
 
-# --- DIHAPUS: Variabel warna dan fungsi log_* dipindahkan ke common/functions.sh ---
-
-# --- Temporary Working Directory & Cleanup ---
+# --- Temp directory for parallel logs ---
 WORK_DIR=$(mktemp -d "/tmp/${SCRIPT_NAME}.XXXXXX")
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# --- Check Functions (Parallelized) ---
-# ... (Semua fungsi check_* milikmu tetap sama persis)
-check_system_info() {
+# --- Check Functions (run in parallel) ---
+check_system_info() { 
     exec > "$1" 2>&1
     log_section "SYSTEM & KERNEL"
     hostnamectl
-    echo; local kernel=$(uname -r)
-    if [[ $kernel == *zen* ]]; then log_info "Kernel Zen detected: $kernel"
-    elif [[ $kernel == *lts* ]]; then log_info "Kernel LTS detected: $kernel. Optimized for stability."
-    else log_info "Standard kernel detected: $kernel"; fi
+    echo
+    local k; k=$(uname -r)
+    if [[ $k == *zen* ]]; then log_info "Rockin' a Zen Kernel: $k"
+    elif [[ $k == *lts* ]]; then log_info "LTS Kernel for stability: $k"
+    else log_info "Standard Kernel: $k"; fi
 }
-
-check_hardware() {
+check_hardware() { 
     exec > "$1" 2>&1
     log_section "HARDWARE"
-    echo "--- CPU Info ---"
-    lscpu | grep -E 'Model name|CPU\(s\)|Thread|Core\(s\) per socket' || log_warn "lscpu not found"
-    echo -e "\n--- Memory Info ---"; free -h || log_warn "free not found"
-    echo -e "\n--- Storage Devices ---"; lsblk -f || log_warn "lsblk not found"
-    echo -e "\n--- Temperature ---"
+    lscpu | grep -E 'Model name|CPU\(s\)' || log_warn "can't find lscpu"
+    echo -e "\n--- Memory ---"; free -h
+    echo -e "\n--- Storage ---"; lsblk -f
+    echo -e "\n--- Temps ---"
     if command -v sensors &>/dev/null; then sensors; else log_warn "lm-sensors not found."; fi
 }
-
-check_drivers() {
+check_drivers() { 
     exec > "$1" 2>&1
-    log_section "DRIVERS & DEVICES"
-    if ! command -v lspci >/dev/null; then log_warn "pciutils (lspci) not found."; return; fi
-    echo "--- Key Devices (VGA, Network, Audio) ---"
+    log_section "DRIVERS"
+    if ! command -v lspci >/dev/null; then log_warn "pciutils not found."; return; fi
     lspci -nnk | grep -A3 'VGA\|Network\|Audio'
-    echo -e "\n--- Unclaimed Devices ---"
-    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then
-        log_warn "Unclaimed devices found! These may not be working correctly."
+    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then 
+        log_warn "Whoa, unclaimed devices found. These might be broken."
         lspci -nnk | grep -i "UNCLAIMED"
-    else log_info "All PCI devices seem to have drivers."; fi
+    else 
+        log_info "All PCI devices seem to have drivers."; fi
 }
-
-check_packages() {
+check_packages() { 
     exec > "$1" 2>&1
-    log_section "PACKAGE STATUS"
-    if ! command -v pacman >/dev/null; then log_warn "pacman not found."; return; fi
-    echo "--- Orphaned Packages ---"
-    local orphans; orphans=$(pacman -Qdtq || true)
-    if [[ -n "$orphans" ]]; then
-        local orphan_count; orphan_count=$(echo "$orphans" | wc -l)
-        log_warn "${orphan_count} orphaned packages found."
-        echo "$orphans" | head -n 10
-        log_info "Tip: Remove all with 'sudo pacman -Rns \$(pacman -Qdtq)'"
-    else log_info "No orphaned packages found."; fi
-    if ! $opt_fast_mode; then
-        echo -e "\n--- Missing Package Files ---"
-        local missing_files; missing_files=$(pacman -Qk 2>/dev/null | grep -v " 0 missing files" || true)
-        if [[ -n "$missing_files" ]]; then
-            log_warn "Packages with missing files detected."
-            echo "$missing_files" | head -n 10
-        else log_info "No missing package files found."; fi
+    log_section "PACKAGES"
+    local o; o=$(pacman -Qdtq || true)
+    if [[ -n "$o" ]]; then 
+        local c; c=$(echo "$o" | wc -l)
+        log_warn "$c orphans found."
+        echo "$o" | head -n 5
+        log_info "Pro-tip: nuke 'em with 'sudo pacman -Rns \$(pacman -Qdtq)'"
+    else 
+        log_info "No orphans found."; fi
+    
+    if ! $opt_fast_mode; then 
+        local m; m=$(pacman -Qk 2>/dev/null | grep -v " 0 missing" || true)
+        if [[ -n "$m" ]]; then 
+            log_warn "Packages with missing files found."
+            echo "$m" | head -n 5
+        else 
+            log_info "No missing package files found."; fi
     fi
 }
-
-check_services_and_logs() {
+check_services_and_logs() { 
     exec > "$1" 2>&1
-    log_section "SERVICES & KERNEL LOGS"
-    echo "--- Failed Systemd Services ---"
-    if ! systemctl is-system-running --quiet; then
-        log_warn "System is not in a running state. Checking for failed services."
+    log_section "SERVICES & LOGS"
+    if ! systemctl is-system-running --quiet; then 
+        log_warn "System state is looking wonky. Checking failed services."
         systemctl --failed --no-pager
-    else log_info "No failed systemd services."; fi
-    echo -e "\n--- Recent Kernel Errors & Warnings ---"
-    local kernel_logs; kernel_logs=$(journalctl -p err..warn -n 10 --no-pager --output=short-monotonic || true)
-    if [[ -n "$kernel_logs" ]]; then
-        log_warn "Kernel errors or warnings found in recent logs."
-        echo "$kernel_logs"
-    else log_info "No recent kernel errors or warnings."; fi
+    else 
+        log_info "No failed systemd services."; fi
+    
+    local l; l=$(journalctl -p err..warn -n 10 --no-pager --output=short-monotonic || true)
+    if [[ -n "$l" ]]; then 
+        log_warn "Kernel's been complaining recently. Last 10 issues:"
+        echo "$l"
+    else 
+        log_info "No recent kernel errors or warnings."; fi
 }
 
 # --- Main Logic ---
 main() {
-    # DITAMBAHKAN: Setup warna berdasarkan opsi --no-color
     setup_colors
-
-    echo -e "${BLUE}=== Arch Linux Health Check v${SCRIPT_VERSION} ===${NC}"
-    echo "Running checks... Reports will be saved to '$opt_output_dir'"
+    echo -e "${BLUE}=== Kicking off the Arch Health Check v${SCRIPT_VERSION} ===${NC}"
     mkdir -p "$opt_output_dir"
-    
-    # ... (Sisa dari fungsi main() milikmu tetap sama persis)
+
+    local arch_deps=("lspci:pciutils" "lsusb:usbutils" "sensors:lm-sensors")
+    local missing_pkgs
+    missing_pkgs=$(check_dependencies arch_deps)
+
+    # Run all checks in the background
     check_system_info  "${WORK_DIR}/01-system.log" &
     check_hardware     "${WORK_DIR}/02-hardware.log" &
     check_drivers      "${WORK_DIR}/03-drivers.log" &
     check_packages     "${WORK_DIR}/04-packages.log" &
     check_services_and_logs "${WORK_DIR}/05-services.log" &
-    wait
+    wait # Wait for them to finish
     
+    # Combine logs for scoring
     local final_log_plain="${WORK_DIR}/final_plain.log"
     cat "${WORK_DIR}"/*.log > "$final_log_plain"
     
+    # Calculate health score
     local score=100
     local score_details=""
     local failed_services; failed_services=$(grep -c 'not in a running state' "$final_log_plain" || true)
@@ -166,21 +157,23 @@ main() {
     if [[ $orphans -gt 0 ]]; then score_details+="Orphans (-5) "; fi
     if [[ $missing_files -gt 0 ]]; then score_details+="Missing Files (-5) "; fi
 
+    # Create the score report
     local score_report="${WORK_DIR}/99-score.log"
-    {
+    { 
         log_section "HEALTH SCORE"
         log_info "System Health Score: ${score}/100"
-        if [[ -n "$score_details" ]]; then
-            log_warn "Deductions from: ${score_details}"
-        else
-            log_info "No major issues detected."
+        if [[ -n "$score_details" ]]; then 
+            log_warn "Lost points on: ${score_details}"
+        else 
+            log_info "Lookin' good! No major issues."
         fi
     } > "$score_report"
-    cat "$score_report" >> "$final_log_plain"
     
+    # Combine all logs for final output
     local final_log_colored; final_log_colored=$(mktemp)
     cat "${WORK_DIR}"/*.log "$score_report" > "$final_log_colored"
 
+    # Display summary or full report
     if $opt_summary_mode; then
         echo -e "\n${BLUE}=== SUMMARY ===${NC}"
         grep '\[WARN\]\|\[ERROR\]' "$final_log_colored" || log_info "No warnings or errors to display."
@@ -189,10 +182,14 @@ main() {
         cat "$final_log_colored"
     fi
 
+    # Save the final log file
     local report_base_name="${opt_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
-    echo -e "\n${GREEN}✔ Reports saved successfully.${NC}"
+    echo -e "\n${GREEN}✔ All done. Report saved to '${report_base_name}.log'${NC}"
+    if [[ -n "$missing_pkgs" ]]; then
+        echo -e "\n${YELLOW}PSST: For an even better report, install these: ${GREEN}sudo pacman -Syu ${missing_pkgs}${NC}"
+    fi
 }
 
 main "$@"
