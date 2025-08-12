@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Arch Linux Health Check
+# Arch Linux Health Check - v4.0 (Config & Trap Ready)
 # ============================================================================
 
 set -euo pipefail
 
-# --- Pull in the shared functions ---
+# --- Source common library & setup directories ---
 SCRIPT_DIR_SELF=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-# shellcheck source=../common/functions.sh
 source "$SCRIPT_DIR_SELF/../common/functions.sh"
 
-# --- Script Config ---
+# --- Temp directory & safety trap ---
+# This ensures temp files are deleted even if you press Ctrl+C
+WORK_DIR=$(mktemp -d "/tmp/arch-check.XXXXXX")
+trap 'echo -e "\nScript interrupted. Cleaning up temp files..."; rm -rf "$WORK_DIR"; exit 1' SIGINT SIGTERM
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+# --- Default Config & CLI Parsing ---
 SCRIPT_NAME="arch-health-check"
-SCRIPT_VERSION="3.5"
-LOG_DIR="$HOME/logs"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+SCRIPT_VERSION="4.0"
 opt_fast_mode=false
 opt_no_color=false
 opt_summary_mode=false
-opt_output_dir="$LOG_DIR"
+opt_output_dir="" # Will be populated from config or default
 
-# --- CLI Options & Help ---
 show_usage() {
     echo "Usage: $0 [options]"
     echo "  -f, --fast        Skip slower checks (like pacman -Qk)."
@@ -48,10 +50,6 @@ while true; do
     esac
 done
 
-# --- Temp directory for parallel logs ---
-WORK_DIR=$(mktemp -d "/tmp/${SCRIPT_NAME}.XXXXXX")
-trap 'rm -rf "$WORK_DIR"' EXIT
-
 # --- Check Functions (run in parallel) ---
 check_system_info() { 
     exec > "$1" 2>&1
@@ -63,7 +61,9 @@ check_system_info() {
     elif [[ $k == *lts* ]]; then log_info "LTS Kernel for stability: $k"
     else log_info "Standard Kernel: $k"; fi
 }
+
 check_hardware() { 
+    if [[ "$skip_checks" == *hardware* ]]; then log_info "Skipping hardware check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "HARDWARE"
     lscpu | grep -E 'Model name|CPU\(s\)' || log_warn "can't find lscpu"
@@ -72,7 +72,9 @@ check_hardware() {
     echo -e "\n--- Temps ---"
     if command -v sensors &>/dev/null; then sensors; else log_warn "lm-sensors not found."; fi
 }
+
 check_drivers() { 
+    if [[ "$skip_checks" == *drivers* ]]; then log_info "Skipping drivers check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "DRIVERS"
     if ! command -v lspci >/dev/null; then log_warn "pciutils not found."; return; fi
@@ -83,9 +85,12 @@ check_drivers() {
     else 
         log_info "All PCI devices seem to have drivers."; fi
 }
+
 check_packages() { 
+    if [[ "$skip_checks" == *packages* ]]; then log_info "Skipping packages check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "PACKAGES"
+    if ! command -v pacman &>/dev/null; then log_warn "pacman not found, skipping package checks."; return; fi
     local o; o=$(pacman -Qdtq || true)
     if [[ -n "$o" ]]; then 
         local c; c=$(echo "$o" | wc -l)
@@ -104,7 +109,9 @@ check_packages() {
             log_info "No missing package files found."; fi
     fi
 }
+
 check_services_and_logs() { 
+    if [[ "$skip_checks" == *services* || "$skip_checks" == *logs* ]]; then log_info "Skipping services/logs check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "SERVICES & LOGS"
     if ! systemctl is-system-running --quiet; then 
@@ -124,20 +131,29 @@ check_services_and_logs() {
 # --- Main Logic ---
 main() {
     setup_colors
+    
+    # Load configuration
+    local config_file="$HOME/.config/health-check/health-check.conf"
+    local skip_checks; skip_checks=$(get_config "$config_file" "skip_checks" "")
+    local warning_score; warning_score=$(get_config "$config_file" "warning_score" "75")
+    local critical_score; critical_score=$(get_config "$config_file" "critical_score" "50")
+    local log_dir_conf; log_dir_conf=$(get_config "$config_file" "log_dir" "$HOME/logs")
+    # CLI option -o overrides the config file setting
+    local final_output_dir=${opt_output_dir:-$log_dir_conf}
+
     echo -e "${BLUE}=== Kicking off the Arch Health Check v${SCRIPT_VERSION} ===${NC}"
-    mkdir -p "$opt_output_dir"
+    mkdir -p "$final_output_dir"
 
-    local arch_deps=("lspci:pciutils" "lsusb:usbutils" "sensors:lm-sensors")
-    local missing_pkgs
-    missing_pkgs=$(check_dependencies arch_deps)
+    local arch_deps=("lspci:pciutils" "sensors:lm-sensors")
+    local missing_pkgs; missing_pkgs=$(check_dependencies arch_deps)
 
-    # Run all checks in the background
+    # Run checks in parallel
     check_system_info  "${WORK_DIR}/01-system.log" &
     check_hardware     "${WORK_DIR}/02-hardware.log" &
     check_drivers      "${WORK_DIR}/03-drivers.log" &
     check_packages     "${WORK_DIR}/04-packages.log" &
     check_services_and_logs "${WORK_DIR}/05-services.log" &
-    wait # Wait for them to finish
+    wait
     
     # Combine logs for scoring
     local final_log_plain="${WORK_DIR}/final_plain.log"
@@ -146,10 +162,10 @@ main() {
     # Calculate health score
     local score=100
     local score_details=""
-    local failed_services; failed_services=$(grep -c 'not in a running state' "$final_log_plain" || true)
+    local failed_services; failed_services=$(grep -c 'looking wonky' "$final_log_plain" || true)
     local unclaimed_devices; unclaimed_devices=$(grep -c 'Unclaimed devices found' "$final_log_plain" || true)
-    local orphans; orphans=$(grep -c 'orphaned packages found' "$final_log_plain" || true)
-    local missing_files; missing_files=$(grep -c 'missing files detected' "$final_log_plain" || true)
+    local orphans; orphans=$(grep -c 'orphans found' "$final_log_plain" || true)
+    local missing_files; missing_files=$(grep -c 'missing files found' "$final_log_plain" || true)
     score=$((score - failed_services * 25 - unclaimed_devices * 10 - orphans * 5 - missing_files * 5))
     [[ $score -lt 0 ]] && score=0
     if [[ $failed_services -gt 0 ]]; then score_details+="Failed Services (-25) "; fi
@@ -161,7 +177,9 @@ main() {
     local score_report="${WORK_DIR}/99-score.log"
     { 
         log_section "HEALTH SCORE"
-        log_info "System Health Score: ${score}/100"
+        if [[ $score -le $critical_score ]]; then log_error "System Health Score: ${score}/100"
+        elif [[ $score -le $warning_score ]]; then log_warn "System Health Score: ${score}/100"
+        else log_info "System Health Score: ${score}/100"; fi
         if [[ -n "$score_details" ]]; then 
             log_warn "Lost points on: ${score_details}"
         else 
@@ -183,7 +201,7 @@ main() {
     fi
 
     # Save the final log file
-    local report_base_name="${opt_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
+    local report_base_name="${final_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
     echo -e "\n${GREEN}✔ All done. Report saved to '${report_base_name}.log'${NC}"
