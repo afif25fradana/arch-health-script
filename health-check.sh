@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Health Check Suite - Master Launcher v1.0
-# Author: Afif
+# Health Check Suite - Master Launcher v2.0
+# Author: Afif & Luna
 # Description: Detects the running OS and executes the appropriate
-#              specialized health check script.
+#              specialized health check script from the 'scripts' directory.
 # ============================================================================
 
 set -euo pipefail
 
-# --- Helper: Get the directory where the script is located ---
-# This makes it runnable from anywhere on the system.
+# This makes the script runnable from anywhere on the system.
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 # --- OS Detection ---
 if command -v pacman &>/dev/null; then
-    # Arch-based system detected
-    SPECIALIZED_SCRIPT="$SCRIPT_DIR/arch_health_check.sh"
+    SPECIALIZED_SCRIPT="$SCRIPT_DIR/scripts/arch_health_check.sh"
 elif command -v apt-get &>/dev/null; then
-    # Debian/Ubuntu-based system detected
-    SPECIALIZED_SCRIPT="$SCRIPT_DIR/Ubuntu_health_check.sh"
+    SPECIALIZED_SCRIPT="$SCRIPT_DIR/scripts/Ubuntu_health_check.sh"
+elif command -v dnf &>/dev/null; then
+    echo "Info: Fedora/RHEL based system detected. No specialized script is available yet." >&2
+    exit 0 # Exit gracefully, not an error
 else
     echo "Error: Unsupported distribution. This suite currently supports Arch and Debian/Ubuntu based systems." >&2
     exit 1
@@ -33,6 +33,7 @@ fi
 
 # --- Execution ---
 # Use 'exec' to replace this launcher process with the specialized script.
-# This is efficient and passes all arguments ($@) transparently.
+# This is efficient and passes all command-line arguments ($@) transparently.
 echo "--> Detected $(basename "$SPECIALIZED_SCRIPT"). Launching..."
+echo "-----------------------------------------------------"
 exec "$SPECIALIZED_SCRIPT" "$@"
