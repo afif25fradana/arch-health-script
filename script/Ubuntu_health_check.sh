@@ -1,35 +1,33 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Ubuntu/Debian Health & Troubleshoot Report - v1.1 (Refactored)
+# Ubuntu/Debian Health Check - v1.3 (Casual Edition)
 # ============================================================================
 
 set -euo pipefail
 
-# --- DITAMBAHKAN: Memanggil library fungsi bersama ---
+# --- Pull in the shared functions ---
 SCRIPT_DIR_SELF=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-# shellcheck source=../../common/functions.sh
-source "$SCRIPT_DIR_SELF/../../common/functions.sh"
+# shellcheck source=../common/functions.sh
+source "$SCRIPT_DIR_SELF/../common/functions.sh"
 
-# --- Configuration ---
+# --- Script Config ---
 SCRIPT_NAME="ubuntu-health-check"
-SCRIPT_VERSION="1.1"
+SCRIPT_VERSION="1.3"
 LOG_DIR="$HOME/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# --- CLI Options & Parsing ---
-# ... (Semua bagian getopt dan show_usage tetap sama persis seperti script Arch)
 opt_fast_mode=false
 opt_no_color=false
 opt_summary_mode=false
 opt_output_dir="$LOG_DIR"
 
+# --- CLI Options & Help ---
 show_usage() {
     echo "Usage: $0 [options]"
     echo "  -f, --fast        Skip slower checks (like debsums)."
-    echo "  -c, --no-color    Disable colorized output."
-    echo "  -s, --summary     Display only a brief summary on the terminal."
-    echo "  -o, --output-dir  Specify a directory for reports (default: ~/logs)."
-    echo "  -v, --version     Show script version and exit."
+    echo "  -c, --no-color    Disable color output."
+    echo "  -s, --summary     Only show a brief summary."
+    echo "  -o, --output-dir  Where to save reports (default: ~/logs)."
+    echo "  -v, --version     Show script version."
     echo "  -h, --help        Show this help message."
     exit 0
 }
@@ -37,7 +35,6 @@ show_usage() {
 OPTS=$(getopt -o fcs:o:vh --long fast,no-color,summary,output-dir:,version,help -n "$0" -- "$@")
 if [ $? != 0 ]; then echo "Failed parsing options." >&2; exit 1; fi
 eval set -- "$OPTS"
-
 while true; do
     case "$1" in
         -f|--fast) opt_fast_mode=true; shift ;;
@@ -51,13 +48,12 @@ while true; do
     esac
 done
 
-# --- Temporary Working Directory & Cleanup ---
+# --- Temp directory for parallel logs ---
 WORK_DIR=$(mktemp -d "/tmp/${SCRIPT_NAME}.XXXXXX")
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# --- Check Functions (Parallelized) ---
-# ... (Semua fungsi check_* untuk Ubuntu tetap sama)
-check_system_info() {
+# --- Check Functions (run in parallel) ---
+check_system_info() { 
     exec > "$1" 2>&1
     log_section "SYSTEM & KERNEL"
     hostnamectl
@@ -65,117 +61,105 @@ check_system_info() {
     log_info "Kernel: $(uname -r)"
     log_info "Distro: $(lsb_release -ds)"
 }
-
-check_hardware() {
+check_hardware() { 
     exec > "$1" 2>&1
     log_section "HARDWARE"
-    echo "--- CPU Info ---"
-    lscpu | grep -E 'Model name|CPU\(s\)|Thread|Core\(s\) per socket' || log_warn "lscpu not found"
-    echo -e "\n--- Memory Info ---"; free -h || log_warn "free not found"
-    echo -e "\n--- Storage Devices ---"; lsblk -f || log_warn "lsblk not found"
-    echo -e "\n--- Temperature ---"
+    lscpu | grep -E 'Model name|CPU\(s\)' || log_warn "can't find lscpu"
+    echo -e "\n--- Memory ---"; free -h
+    echo -e "\n--- Storage ---"; lsblk -f
+    echo -e "\n--- Temps ---"
     if command -v sensors &>/dev/null; then sensors; else log_warn "lm-sensors not found."; fi
 }
-
-check_drivers() {
+check_drivers() { 
     exec > "$1" 2>&1
-    log_section "DRIVERS & DEVICES"
-    if ! command -v lspci >/dev/null; then log_warn "pciutils (lspci) not found."; return; fi
-    echo "--- Key Devices (VGA, Network, Audio) ---"
+    log_section "DRIVERS"
+    if ! command -v lspci >/dev/null; then log_warn "pciutils not found."; return; fi
     lspci -nnk | grep -A3 'VGA\|Network\|Audio'
-    echo -e "\n--- Unclaimed Devices ---"
-    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then
-        log_warn "Unclaimed devices found! These may not be working correctly."
+    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then 
+        log_warn "Whoa, unclaimed devices found. These might be broken."
         lspci -nnk | grep -i "UNCLAIMED"
-    else log_info "All PCI devices seem to have drivers."; fi
+    else 
+        log_info "All PCI devices seem to have drivers."; fi
 }
-
-check_packages() {
+check_packages() { 
     exec > "$1" 2>&1
-    log_section "PACKAGE STATUS (APT)"
-    echo "--- Upgradable Packages ---"
-    local upgradable_count
-    upgradable_count=$(apt list --upgradable 2>/dev/null | grep -vc "Listing...")
-    if [[ "$upgradable_count" -gt 0 ]]; then
-        log_warn "${upgradable_count} packages can be upgraded."
-        log_info "Run 'sudo apt update && sudo apt upgrade' to update them."
-    else
-        log_info "System is up-to-date."
-    fi
-
-    echo -e "\n--- Orphaned/Autoremovable Packages ---"
+    log_section "PACKAGES (APT)"
+    local u; u=$(apt list --upgradable 2>/dev/null | grep -vc "Listing...")
+    if [[ "$u" -gt 0 ]]; then 
+        log_warn "$u packages can be upgraded."
+        log_info "Tip: run 'sudo apt update && sudo apt upgrade' to fix."
+    else 
+        log_info "System is up-to-date."; fi
+    
     if command -v deborphan &>/dev/null; then
-        local orphans; orphans=$(deborphan || true)
-        if [[ -n "$orphans" ]]; then
-            log_warn "Orphaned packages found by deborphan:"
-            echo "$orphans"
-        else
-            log_info "No orphaned packages found by deborphan."
-        fi
+        local o; o=$(deborphan || true)
+        if [[ -n "$o" ]]; then 
+            log_warn "Orphans found by deborphan:"
+            echo "$o"
+        else 
+            log_info "No orphans found by deborphan."; fi
     else
-        log_warn "deborphan not found. For a more accurate orphan check, please install it."
+        log_warn "deborphan not found. For a better orphan check, install it."
     fi
 
     if ! $opt_fast_mode; then
-        echo -e "\n--- Changed/Missing Package Files ---"
         if command -v debsums &>/dev/null; then
-            local debsums_output; debsums_output=$(debsums -c 2>/dev/null || true)
-            if [[ -n "$debsums_output" ]]; then
-                log_warn "Found changed configuration files (this can be normal):"
-                echo "$debsums_output"
-            else
-                log_info "No changed or missing package files found."
-            fi
+            local d; d=$(debsums -c 2>/dev/null || true)
+            if [[ -n "$d" ]]; then 
+                log_warn "Found changed config files (this can be normal):"
+                echo "$d"
+            else 
+                log_info "No changed package files found."; fi
         else
-            log_warn "debsums not found. Skipping package file integrity check."
+            log_warn "debsums not found. Skipping file integrity check."
         fi
     fi
 }
-
-check_services_and_logs() {
+check_services_and_logs() { 
     exec > "$1" 2>&1
-    log_section "SERVICES & SYSTEM LOGS"
-    echo "--- Failed Systemd Services ---"
-    if ! systemctl is-system-running --quiet; then
-        log_warn "System is not in a running state. Checking for failed services."
+    log_section "SERVICES & LOGS"
+    if ! systemctl is-system-running --quiet; then 
+        log_warn "System state is looking wonky. Checking failed services."
         systemctl --failed --no-pager
-    else log_info "No failed systemd services."; fi
+    else 
+        log_info "No failed systemd services."; fi
     
-    echo -e "\n--- Recent System Logs (Errors/Warnings) ---"
-    local syslog_errors; syslog_errors=$(grep -E '(?i)error|warn|fail' /var/log/syslog | tail -n 10 || true)
-    if [[ -n "$syslog_errors" ]]; then
-        log_warn "Found potential errors/warnings in /var/log/syslog:"
-        echo "$syslog_errors"
-    else
-        log_info "No recent errors or warnings found in syslog."
-    fi
+    local l; l=$(grep -E '(?i)error|warn|fail' /var/log/syslog | tail -n 10 || true)
+    if [[ -n "$l" ]]; then 
+        log_warn "Found some errors/warnings in syslog:"
+        echo "$l"
+    else 
+        log_info "No recent errors or warnings in syslog."; fi
 }
 
 # --- Main Logic ---
 main() {
-    # DITAMBAHKAN: Setup warna berdasarkan opsi --no-color
     setup_colors
-
-    echo -e "${BLUE}=== Ubuntu/Debian Health Check v${SCRIPT_VERSION} ===${NC}"
-    # ... (Sisa dari fungsi main() milikmu tetap sama persis)
-    echo "Running checks... Reports will be saved to '$opt_output_dir'"
+    echo -e "${BLUE}=== Kicking off the Ubuntu/Debian Health Check v${SCRIPT_VERSION} ===${NC}"
     mkdir -p "$opt_output_dir"
-    
+
+    local ubuntu_deps=("lspci:pciutils" "sensors:lm-sensors" "deborphan:deborphan" "debsums:debsums")
+    local missing_pkgs
+    missing_pkgs=$(check_dependencies ubuntu_deps)
+
+    # Run all checks in the background
     check_system_info  "${WORK_DIR}/01-system.log" &
     check_hardware     "${WORK_DIR}/02-hardware.log" &
     check_drivers      "${WORK_DIR}/03-drivers.log" &
     check_packages     "${WORK_DIR}/04-packages.log" &
     check_services_and_logs "${WORK_DIR}/05-services.log" &
-    wait
+    wait # Wait for them to finish
     
+    # Combine logs for scoring
     local final_log_plain="${WORK_DIR}/final_plain.log"
     cat "${WORK_DIR}"/*.log > "$final_log_plain"
     
+    # Calculate health score
     local score=100
     local score_details=""
     local failed_services; failed_services=$(grep -c 'not in a running state' "$final_log_plain" || true)
     local unclaimed_devices; unclaimed_devices=$(grep -c 'Unclaimed devices found' "$final_log_plain" || true)
-    local upgradable_pkgs; upgradable_pkgs=$(grep -o '^[0-9]\+' "$final_log_plain" | head -n1 || echo 0)
+    local upgradable_pkgs; upgradable_pkgs=$(grep -o '^[0-9]\+ packages can be upgraded' "$final_log_plain" | grep -o '^[0-9]\+' || echo 0)
     
     score=$((score - failed_services * 25 - unclaimed_devices * 10 - upgradable_pkgs * 1))
     [[ $score -lt 0 ]] && score=0
@@ -183,17 +167,22 @@ main() {
     if [[ $unclaimed_devices -gt 0 ]]; then score_details+="Unclaimed Devices (-10) "; fi
     if [[ $upgradable_pkgs -gt 0 ]]; then score_details+="${upgradable_pkgs} Upgradable Pkgs (-${upgradable_pkgs}) "; fi
 
+    # Create the score report
     local score_report="${WORK_DIR}/99-score.log"
-    {
+    { 
         log_section "HEALTH SCORE"
         log_info "System Health Score: ${score}/100"
-        if [[ -n "$score_details" ]]; then log_warn "Deductions from: ${score_details}"; else log_info "No major issues detected."; fi
+        if [[ -n "$score_details" ]]; then 
+            log_warn "Lost points on: ${score_details}"
+        else 
+            log_info "Lookin' good! No major issues."; fi
     } > "$score_report"
-    cat "$score_report" >> "$final_log_plain"
     
+    # Combine all logs for final output
     local final_log_colored; final_log_colored=$(mktemp)
     cat "${WORK_DIR}"/*.log "$score_report" > "$final_log_colored"
 
+    # Display summary or full report
     if $opt_summary_mode; then
         echo -e "\n${BLUE}=== SUMMARY ===${NC}"
         grep '\[WARN\]\|\[ERROR\]' "$final_log_colored" || log_info "No warnings or errors to display."
@@ -202,10 +191,14 @@ main() {
         cat "$final_log_colored"
     fi
 
+    # Save the final log file
     local report_base_name="${opt_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
-    echo -e "\n${GREEN}✔ Reports saved successfully to '${opt_output_dir}'${NC}"
+    echo -e "\n${GREEN}✔ All done. Report saved to '${report_base_name}.log'${NC}"
+    if [[ -n "$missing_pkgs" ]]; then
+        echo -e "\n${YELLOW}PSST: For an even better report, install these: ${GREEN}sudo apt update && sudo apt install ${missing_pkgs}${NC}"
+    fi
 }
 
 main "$@"
