@@ -6,7 +6,7 @@ Just a little script I made to quickly check the health of my Arch Linux setup (
 
 ## 📸 Demo
 
-*(Seriously, put a screenshot or a GIF here. It makes the project look 10x cooler. Use `peek`!)*
+*(I forgot to record it ehek*
 
 ![image](https://github.com/afif25fradana/arch-health-script/assets/106969564/67f70b74-ed5d-4f11-9e28-ac7f3d56d787)
 
