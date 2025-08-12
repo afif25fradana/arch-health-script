@@ -1,6 +1,5 @@
 # Linux Health Check Scripts 🩺
 
-![Maintained](https://img.shields.io/badge/Maintained?-Maybe LOL-green?style=for-the-badge)
 ![Language](https://img.shields.io/badge/Made%20with-Bash-blue?style=for-the-badge&logo=gnu-bash)
 ![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
 
