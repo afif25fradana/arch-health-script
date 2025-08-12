@@ -1,8 +1,5 @@
 # Linux Health Check Suite 🩺
 
-![Language](https://img.shields.io/badge/Made%20with-Bash-blue?style=for-the-badge&logo=gnu-bash)
-![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
-
 A smart, fast, and safe diagnostic toolkit for major Linux families. It runs parallel checks, provides a weighted health score, and gives you clear, actionable insights into your system's condition.
 
 **Supported Systems:**
