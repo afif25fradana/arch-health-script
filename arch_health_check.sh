@@ -210,7 +210,7 @@ main() {
 
     local report_base_name="${opt_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
-    # Generate MD and HTML reports... (omitted for brevity, same as v3.1)
+    # Generate MD and HTML reports... i hope its work anyway
 
     echo -e "\n${GREEN}✔ Reports saved successfully.${NC}"
     if [[ -n "$missing_pkgs" ]]; then
