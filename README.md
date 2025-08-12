@@ -1,9 +1,5 @@
 # Arch Health Check Script
 
-![Language](https://img.shields.io/badge/Made%20with-Bash-blue?style=for-the-badge&logo=gnu-bash)
-![Version](https://img.shields.io/badge/Version-3.1-green?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-purple?style=for-the-badge)
-
 A comprehensive system health check and diagnostic reporting script for Arch Linux and its derivatives (e.g., EndeavourOS, Manjaro). It's built to run quickly using safe parallel execution and generates easy-to-read reports in multiple formats.
 
 ---
