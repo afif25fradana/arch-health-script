@@ -159,7 +159,7 @@ main() {
     local score_details=""
     local failed_services; failed_services=$(grep -c 'not in a running state' "$final_log_plain" || true)
     local unclaimed_devices; unclaimed_devices=$(grep -c 'Unclaimed devices found' "$final_log_plain" || true)
-    local upgradable_pkgs; upgradable_pkgs=$(grep -o '^[0-9]\+ packages can be upgraded' "$final_log_plain" | grep -o '^[0-9]\+' || echo 0)
+    local upgradable_pkgs; upgradable_pkgs=$(grep -o '[0-9]\+ packages can be upgraded' "$final_log_plain" | grep -o '[0-9]\+' | head -n1 || echo 0)
     
     score=$((score - failed_services * 25 - unclaimed_devices * 10 - upgradable_pkgs * 1))
     [[ $score -lt 0 ]] && score=0
