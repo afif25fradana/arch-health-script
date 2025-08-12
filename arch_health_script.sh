@@ -10,7 +10,7 @@ set -euo pipefail
 
 # --- Configuration ---
 SCRIPT_NAME="arch-health-check"
-SCRIPT_VERSION="3.1"
+SCRIPT_VERSION="1.6"
 LOG_DIR="$HOME/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -85,13 +85,11 @@ check_dependencies() {
             missing_packages+=("$pkg")
         fi
     done
-    # Return a space-separated string of missing packages
     echo "${missing_packages[*]}"
 }
 
 
 # --- Check Functions (Parallelized) ---
-# Each function now accepts an output file path ($1) and redirects all its output there.
 
 check_system_info() {
     exec > "$1" 2>&1
