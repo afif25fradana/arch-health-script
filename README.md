@@ -32,7 +32,7 @@ Getting started is easy.
 
 1.  **Clone the repo:**
     ```bash
-    git clone [https://github.com/afif25fradana/arch-health-script.git](https://github.com/afif25fradana/arch-health-script.git)
+    git clone https://github.com/afif25fradana/arch-health-script.git
     cd arch-health-script
     ```
 
