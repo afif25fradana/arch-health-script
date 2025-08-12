@@ -17,7 +17,7 @@ A comprehensive system health check and diagnostic reporting script for Arch Lin
 
 2.  Make the script executable:
     ```bash
-    chmod +x arch_health_check_v3.1.sh
+    chmod +x arch_health_check.sh
     ```
 
 ---
@@ -69,7 +69,7 @@ Run the script directly from your terminal inside the project folder.
 It is highly recommended to save reports to a separate directory (e.g., `reports/`) to keep your working directory clean. Ensure this directory is added to your `.gitignore` file.
 
 ```bash
-./arch_health_check_v3.1.sh -o reports/
+./arch_health_check.sh -o reports/
 ```
 
 #### **Available Options**
