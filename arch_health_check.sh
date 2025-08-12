@@ -2,7 +2,7 @@
 # ============================================================================
 # Arch Linux Health & Troubleshoot Report - v3.2
 # A robust version with weighted scoring, getopt parsing, and rich reports.
-# Built by Luna, inspired by Afif's feature requests.
+# what? expect something?
 # ============================================================================
 
 # Stop on error, unset variable, or pipe failure
