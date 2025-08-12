@@ -15,20 +15,29 @@ A smart, fast, and safe diagnostic toolkit for major Linux families. It runs par
 
 Get up and running in seconds. The installer will copy the scripts to a standard system location, allowing you to run `health-check` from any directory.
 
+
+### 1. Clone the repository
 ```bash
-# 1. Clone the repository
 git clone https://github.com/afif25fradana/health-check.git
 cd health-check
+```
 
-# 2. Make the installer executable
+### 2. Make the installer executable
+```bash
 chmod +x install.sh
+```
 
-# 3. Run the installer (choose one)
+### 3. Run the installer (choose one)
+```bash
 ./install.sh         # Recommended: Installs locally for your user
-# OR
+```
+### OR
+```bash
 sudo ./install.sh    # Optional: Installs system-wide for all users
+```
 
 # 4. Run it from anywhere!
+```bash
 health-check --summary
 ```
 
