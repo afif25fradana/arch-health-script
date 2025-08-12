@@ -22,8 +22,14 @@ log_section() { echo -e "\n${BLUE}=== $1 ===${NC}"; }
 # Takes a list of "command:package" pairs and checks if the command exists.
 # Returns a space-separated string of missing packages.
 check_dependencies() {
+    # If its no argument then safe
+    if [[ $# -eq 0 ]]; then
+        echo ""
+        return
+    fi
+    
     local missing_packages_str=""
-    # The first argument is a reference to the array passed from the caller
+    # Nameref still same anyway
     local -n dependencies_map_ref=$1
 
     for item in "${dependencies_map_ref[@]}"; do
@@ -33,6 +39,5 @@ check_dependencies() {
             missing_packages_str+="$pkg "
         fi
     done
-    # Return the string of missing packages
     echo "$missing_packages_str"
 }
