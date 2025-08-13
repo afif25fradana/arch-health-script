@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Health Check Suite Installer v1.1
+# Health Check Suite Installer v1.2 (Path Fixed)
 # Installs the suite for system-wide or user-local usage.
 # ============================================================================
 
@@ -14,8 +14,8 @@ log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# --- Get the directory of the installer script itself ---
-# This allows running it from anywhere, e.g., ./installers/install.sh
+# --- FIXED: More robust way to find the source directory ---
+# This ensures that no matter how the script is called, it finds its own location.
 SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 # --- Determine Installation Mode (System vs. User) ---
@@ -39,38 +39,52 @@ install_suite() {
 
     # 1. Create target directories
     log_info "Creating directories..."
-    mkdir -p "$TARGET_BIN_DIR"
-    mkdir -p "$TARGET_SHARE_DIR"
+    # Use sudo only if installing system-wide
+    if [[ "$INSTALL_MODE" == "system" ]]; then
+        sudo mkdir -p "$TARGET_BIN_DIR"
+        sudo mkdir -p "$TARGET_SHARE_DIR"
+    else
+        mkdir -p "$TARGET_BIN_DIR"
+        mkdir -p "$TARGET_SHARE_DIR"
+    fi
 
     # 2. Check for required files before copying
     log_info "Verifying required files..."
     required_files=("health-check.sh" "scripts/arch_health_check.sh" "scripts/Ubuntu_health_check.sh" "common/functions.sh")
     for file in "${required_files[@]}"; do
         if [[ ! -f "$SOURCE_DIR/$file" ]]; then
-            log_error "Required file not found: '$SOURCE_DIR/$file'. Make sure you run this from the repo root."
+            log_error "Required file not found: '$SOURCE_DIR/$file'"
+            log_error "Please make sure you are running this from the root of the cloned repository."
             exit 1
         fi
     done
 
-    # 3. Copy files
+    # 3. Copy files using the correct permissions
     log_info "Installing launcher to '$TARGET_BIN_DIR/health-check'..."
-    cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
-
-    log_info "Installing library and scripts to '$TARGET_SHARE_DIR'..."
-    # Copy the contents of the directories
-    cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
+    if [[ "$INSTALL_MODE" == "system" ]]; then
+        sudo cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
+        sudo cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
+    else
+        cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
+        cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
+    fi
 
     # 4. Set executable permissions
     log_info "Setting executable permissions..."
-    chmod +x "$TARGET_BIN_DIR/health-check"
-    chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
+    if [[ "$INSTALL_MODE" == "system" ]]; then
+        sudo chmod +x "$TARGET_BIN_DIR/health-check"
+        sudo chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
+    else
+        chmod +x "$TARGET_BIN_DIR/health-check"
+        chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
+    fi
 
     # 5. Final success message
     echo
     log_info "✅ Health Check Suite installed successfully!"
     echo
 
-    if [[ $INSTALL_MODE == "user" ]]; then
+    if [[ "$INSTALL_MODE" == "user" ]]; then
         log_warn "IMPORTANT: Make sure '$TARGET_BIN_DIR' is in your PATH."
         log_warn "You can do this by adding the following line to your ~/.bashrc or ~/.zshrc:"
         echo -e "${YELLOW}  export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"

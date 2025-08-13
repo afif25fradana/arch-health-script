@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Common Functions Library for Health Check Suite v2.0
+# Common Functions Library for Health Check Suite v2.1
 # ============================================================================
 
 # --- Color Handling ---
+# Sets up color variables for script output, but only if stdout is a terminal
+# and the --no-color flag is not set.
 setup_colors() {
     if [[ -t 1 && "${opt_no_color:-false}" == false ]]; then
         RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
@@ -18,13 +20,13 @@ log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error(){ echo -e "${RED}[ERROR]${NC} $1"; }
 log_section() { echo -e "\n${BLUE}=== $1 ===${NC}"; }
 
-# --- NEW: Config File Parser ---
-# Reads a value from a .conf file. Simple but effective.
+# --- Config File Parser ---
+# Reads a key's value from a simple .conf file (key = value).
 # Usage: get_config "path/to/file.conf" "key_name" "default_value"
 get_config() {
     local file="$1" key="$2" default="$3"
     if [[ -f "$file" ]]; then
-        # Find the key, remove comments/whitespace, get value after '='
+        # Find the line with the key, cut the value after '=', and trim whitespace.
         local value
         value=$(grep -E "^\s*${key}\s*=" "$file" | cut -d'=' -f2 | sed 's/^\s*//;s/\s*$//')
         if [[ -n "$value" ]]; then
@@ -35,12 +37,19 @@ get_config() {
     echo "$default"
 }
 
-# --- Shared Dependency Checker (with bug fix) ---
+# --- Shared Dependency Checker ---
+# Checks for the existence of commands and returns a space-separated string
+# of corresponding package names that are missing.
+# NOTE: Uses a nameref (local -n), which requires bash 4.3+.
+# Usage:
+#   local my_deps=("cmd1:pkg1" "cmd2:pkg2")
+#   local missing; missing=$(check_dependencies my_deps)
 check_dependencies() {
     # If called without an argument, exit safely.
     if [[ $# -eq 0 ]]; then echo ""; return; fi
     
     local missing_packages_str=""
+    # Nameref to the actual array passed by name.
     local -n dependencies_map_ref=$1
 
     for item in "${dependencies_map_ref[@]}"; do

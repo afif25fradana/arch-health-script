@@ -1,0 +1,9 @@
+# Atur perilaku default untuk semua file
+* text=auto eol=lf
+
+# Pastikan file skrip shell SELALU menggunakan LF, karena akan dijalankan di Linux
+*.sh text eol=lf
+
+# Pastikan file Windows (jika ada) menggunakan CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
