@@ -6,17 +6,20 @@
 
 set -euo pipefail
 
-# --- Pretty Colors ---
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-
-# --- Logging Functions ---
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
 # --- FIXED: More robust way to find the source directory ---
 # This ensures that no matter how the script is called, it finds its own location.
 SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+
+# Source common functions for logging and colors
+COMMON_FUNCTIONS="$SOURCE_DIR/common/functions.sh"
+if [[ ! -f "$COMMON_FUNCTIONS" ]]; then
+    echo "Error: Common functions library not found at $COMMON_FUNCTIONS" >&2
+    exit 1
+fi
+source "$COMMON_FUNCTIONS"
+
+# Setup colors for logging
+setup_colors
 
 # --- Determine Installation Mode (System vs. User) ---
 if [[ $EUID -eq 0 ]]; then
@@ -24,18 +27,20 @@ if [[ $EUID -eq 0 ]]; then
     INSTALL_MODE="system"
     TARGET_BIN_DIR="/usr/local/bin"
     TARGET_SHARE_DIR="/usr/local/share/health-check"
+    TARGET_CONF_DIR="/etc/health-check"
     log_info "Running with sudo. Installing for all users..."
 else
     # Running as a regular user, install locally
     INSTALL_MODE="user"
     TARGET_BIN_DIR="$HOME/.local/bin"
     TARGET_SHARE_DIR="$HOME/.local/share/health-check"
+    TARGET_CONF_DIR="$HOME/.config/health-check"
     log_info "Running as user. Installing locally into $HOME/.local..."
 fi
 
 # --- Main Installation Logic ---
 install_suite() {
-    echo -e "${BLUE}=== Health Check Suite Installer ===${NC}"
+    log_section "Health Check Suite Installer"
 
     # 1. Create target directories
     log_info "Creating directories..."
@@ -43,14 +48,16 @@ install_suite() {
     if [[ "$INSTALL_MODE" == "system" ]]; then
         sudo mkdir -p "$TARGET_BIN_DIR"
         sudo mkdir -p "$TARGET_SHARE_DIR"
+        sudo mkdir -p "$TARGET_CONF_DIR"
     else
         mkdir -p "$TARGET_BIN_DIR"
         mkdir -p "$TARGET_SHARE_DIR"
+        mkdir -p "$TARGET_CONF_DIR"
     fi
 
     # 2. Check for required files before copying
     log_info "Verifying required files..."
-    required_files=("health-check.sh" "scripts/arch_health_check.sh" "scripts/Ubuntu_health_check.sh" "common/functions.sh")
+    required_files=("health-check.sh" "health-check.conf" "scripts/arch_health_check.sh" "scripts/Ubuntu_health_check.sh" "common/functions.sh")
     for file in "${required_files[@]}"; do
         if [[ ! -f "$SOURCE_DIR/$file" ]]; then
             log_error "Required file not found: '$SOURCE_DIR/$file'"
@@ -69,17 +76,32 @@ install_suite() {
         cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
     fi
 
-    # 4. Set executable permissions
+    # 4. Install configuration file
+    log_info "Installing configuration to '$TARGET_CONF_DIR/health-check.conf'..."
+    local target_conf_file="$TARGET_CONF_DIR/health-check.conf"
+    if [[ -f "$target_conf_file" ]]; then
+        log_warn "Configuration file already exists at '$target_conf_file'. Skipping."
+    else
+        if [[ "$INSTALL_MODE" == "system" ]]; then
+            sudo cp "$SOURCE_DIR/health-check.conf" "$target_conf_file"
+        else
+            cp "$SOURCE_DIR/health-check.conf" "$target_conf_file"
+        fi
+    fi
+
+    # 5. Set executable permissions
     log_info "Setting executable permissions..."
     if [[ "$INSTALL_MODE" == "system" ]]; then
         sudo chmod +x "$TARGET_BIN_DIR/health-check"
         sudo chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
+        sudo chmod +x "$TARGET_SHARE_DIR/common/functions.sh" # Ensure common functions are executable
     else
         chmod +x "$TARGET_BIN_DIR/health-check"
         chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
+        chmod +x "$TARGET_SHARE_DIR/common/functions.sh" # Ensure common functions are executable
     fi
 
-    # 5. Final success message
+    # 6. Final success message
     echo
     log_info "✅ Health Check Suite installed successfully!"
     echo

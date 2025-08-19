@@ -69,9 +69,11 @@ check_hardware() {
     exec > "$1" 2>&1
     log_section "HARDWARE"
     lscpu | grep -E 'Model name|CPU\(s\)' || log_warn "can't find lscpu"
-    echo -e "\n--- Memory ---"; free -h
-    echo -e "\n--- Storage ---"; lsblk -f
-    echo -e "\n--- Temps ---"
+    log_subsection "Memory"
+    free -h
+    log_subsection "Storage"
+    lsblk -f
+    log_subsection "Temps"
     if command -v sensors &>/dev/null; then sensors; else log_warn "lm-sensors not found."; fi
 }
 
@@ -134,8 +136,16 @@ check_services_and_logs() {
 main() {
     setup_colors
     
-    # Load configuration from user's home directory if it exists
-    local config_file="$HOME/.config/health-check/health-check.conf"
+    # Load configuration from system-wide or user-specific paths
+    local system_config_file="/etc/health-check/health-check.conf"
+    local user_config_file="$HOME/.config/health-check/health-check.conf"
+    local config_file=""
+    if [[ -f "$user_config_file" ]]; then
+        config_file="$user_config_file"
+    elif [[ -f "$system_config_file" ]]; then
+        config_file="$system_config_file"
+    fi
+    
     local skip_checks; skip_checks=$(get_config "$config_file" "skip_checks" "")
     local warning_score; warning_score=$(get_config "$config_file" "warning_score" "75")
     local critical_score; critical_score=$(get_config "$config_file" "critical_score" "50")

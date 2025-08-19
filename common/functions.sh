@@ -18,7 +18,30 @@ setup_colors() {
 log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error(){ echo -e "${RED}[ERROR]${NC} $1"; }
-log_section() { echo -e "\n${BLUE}=== $1 ===${NC}"; }
+log_subsection() { echo -e "${BLUE}--- $1 ---${NC}"; }
+log_section() {
+    local title=" $1 "
+    local padding_char="─"
+    local terminal_width
+    terminal_width=$(tput cols 2>/dev/null || echo 80) # Default to 80 if tput fails
+    local title_len=${#title}
+    local padding_len=$(( (terminal_width - title_len) / 2 ))
+    
+    # Ensure padding is not negative
+    if (( padding_len < 0 )); then padding_len=0; fi
+
+    local left_padding
+    left_padding=$(printf "%${padding_len}s" | tr ' ' "$padding_char")
+    local right_padding
+    right_padding=$(printf "%${padding_len}s" | tr ' ' "$padding_char")
+    
+    # Adjust for odd/even width to fill the line
+    if (( (title_len + 2 * padding_len) < terminal_width )); then
+        right_padding="${right_padding}${padding_char}"
+    fi
+
+    echo -e "\n${BLUE}┌${left_padding}${title}${right_padding}┐${NC}"
+}
 
 # --- Config File Parser ---
 # Reads a key's value from a simple .conf file (key = value).
