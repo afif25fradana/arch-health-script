@@ -3,6 +3,7 @@
 # Common Functions Library for Health Check Suite v2.1
 # ============================================================================
 
+
 # --- Color Handling ---
 # Sets up color variables for script output, but only if stdout is a terminal
 # and the --no-color flag is not set.
@@ -63,20 +64,15 @@ get_config() {
 # --- Shared Dependency Checker ---
 # Checks for the existence of commands and returns a space-separated string
 # of corresponding package names that are missing.
-# NOTE: Uses a nameref (local -n), which requires bash 4.3+.
+# This version is more portable and avoids namerefs.
 # Usage:
 #   local my_deps=("cmd1:pkg1" "cmd2:pkg2")
-#   local missing; missing=$(check_dependencies my_deps)
+#   local missing; missing=$(check_dependencies "${my_deps[@]}")
 check_dependencies() {
-    # If called without an argument, exit safely.
-    if [[ $# -eq 0 ]]; then echo ""; return; fi
-    
     local missing_packages_str=""
-    # Nameref to the actual array passed by name.
-    local -n dependencies_map_ref=$1
-
-    for item in "${dependencies_map_ref[@]}"; do
-        local cmd="${item%%:*}"; local pkg="${item##*:}"
+    for item in "$@"; do
+        local cmd="${item%%:*}"
+        local pkg="${item##*:}"
         if ! command -v "$cmd" &>/dev/null; then
             missing_packages_str+="$pkg "
         fi

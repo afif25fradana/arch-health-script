@@ -1,6 +1,6 @@
 # Linux Health Check Suite 🩺
 
-A smart, fast, and safe diagnostic toolkit for major Linux families. It runs parallel checks, provides a weighted health score, and gives you clear, actionable insights into your system's condition.
+A smart, fast, and portable diagnostic toolkit for major Linux families. It runs parallel checks, provides a weighted health score, and gives you clear, actionable insights into your system's condition.
 
 **Supported Systems:**
 * **Arch Linux** & derivatives (EndeavourOS, Manjaro, etc.)
@@ -58,7 +58,7 @@ The uninstaller will automatically detect the installation type and remove all t
 * **Smart Dependency Handling**: Detects missing tools and suggests an installation command without crashing.
 * **Customizable Configuration**: Tweak script behavior via a simple configuration file (e.g., skip certain checks, change log directories).
 * **Safe by Design**: Never requires `sudo` to run the checks, ensuring user control and system security.
-* **Robust and Portable**: Scripts are designed to be run from anywhere on the system, with no hardcoded paths.
+* **Highly Portable**: Uses the standard `/etc/os-release` for reliable OS detection and avoids shell-specific features, ensuring compatibility across a wide range of systems.
 
 ---
 

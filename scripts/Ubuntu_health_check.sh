@@ -17,7 +17,6 @@ trap 'echo -e "\nScript interrupted. Cleaning up temp files..."; rm -rf "$WORK_D
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # --- Default Config & CLI Parsing ---
-SCRIPT_NAME="ubuntu-health-check"
 SCRIPT_VERSION="2.1"
 opt_fast_mode=false
 opt_no_color=false
@@ -45,7 +44,7 @@ while true; do
         -c|--no-color) opt_no_color=true; shift ;;
         -s|--summary) opt_summary_mode=true; shift ;;
         -o|--output-dir) opt_output_dir="$2"; shift 2;;
-        -v|--version) echo "$SCRIPT_NAME v$SCRIPT_VERSION"; exit 0 ;;
+        -v|--version) echo "ubuntu-health-check v$SCRIPT_VERSION"; exit 0 ;;
         -h|--help) show_usage ;;
         --) shift; break ;;
         *) echo "Internal error!"; exit 1 ;;
@@ -81,23 +80,30 @@ check_drivers() {
     log_section "DRIVERS"
     if ! command -v lspci >/dev/null; then log_warn "pciutils not found."; return; fi
     lspci -nnk | grep -A3 'VGA\|Network\|Audio'
-    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then 
-        log_warn "Whoa, unclaimed devices found. These might be broken."
+    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then
+        log_warn "Unclaimed PCI devices found. These may lack proper drivers."
         lspci -nnk | grep -i "UNCLAIMED"
-    else 
-        log_info "All PCI devices seem to have drivers."; fi
+        # Create an issue file for the scoring logic
+        touch "${WORK_DIR}/issue_unclaimed_devices"
+    else
+        log_info "All PCI devices appear to have drivers."
+    fi
 }
 
 check_packages() { 
     if [[ "$skip_checks" == *packages* ]]; then log_info "Skipping packages check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "PACKAGES (APT)"
-    local u; u=$(apt list --upgradable 2>/dev/null | grep -vc "Listing...")
-    if [[ "$u" -gt 0 ]]; then 
-        log_warn "$u packages can be upgraded."
+    local upgradable_count
+    upgradable_count=$(apt list --upgradable 2>/dev/null | grep -vc "Listing...")
+    if [[ "$upgradable_count" -gt 0 ]]; then
+        log_warn "$upgradable_count packages can be upgraded."
         log_info "Tip: run 'sudo apt update && sudo apt upgrade' to fix."
-    else 
-        log_info "System is up-to-date."; fi
+        # Create an issue file with the count for the scoring logic
+        echo "$upgradable_count" > "${WORK_DIR}/issue_upgradable_pkgs"
+    else
+        log_info "System is up-to-date."
+    fi
     
     if command -v deborphan &>/dev/null; then
         local o; o=$(deborphan || true)
@@ -128,11 +134,14 @@ check_services_and_logs() {
     if [[ "$skip_checks" == *services* || "$skip_checks" == *logs* ]]; then log_info "Skipping services/logs check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "SERVICES & LOGS"
-    if ! systemctl is-system-running --quiet; then 
-        log_warn "System state is looking wonky. Checking failed services."
+    if ! systemctl is-system-running --quiet; then
+        log_warn "System state is degraded. Checking for failed services..."
         systemctl --failed --no-pager
-    else 
-        log_info "No failed systemd services."; fi
+        # Create an issue file for the scoring logic
+        touch "${WORK_DIR}/issue_failed_services"
+    else
+        log_info "Systemd state is running normally."
+    fi
     
     # FIXED: Replaced PCRE `(?i)` with more portable `-i` flag for grep.
     local l; l=$(grep -E -i 'error|warn|fail' /var/log/syslog | tail -n 10 || true)
@@ -186,18 +195,32 @@ main() {
     local final_log_plain="${WORK_DIR}/final_plain.log"
     cat "${WORK_DIR}"/*.log > "$final_log_plain"
     
-    # Calculate a simple health score based on findings
+    # --- Scoring ---
+    # Decouple scoring from log messages for maintainability.
     local score=100
     local score_details=""
-    local failed_services; failed_services=$(grep -c 'looking wonky' "$final_log_plain" || true)
-    local unclaimed_devices; unclaimed_devices=$(grep -c 'unclaimed devices found' "$final_log_plain" || true)
-    local upgradable_pkgs; upgradable_pkgs=$(grep -o '[0-9]\+ packages can be upgraded' "$final_log_plain" | grep -o '[0-9]\+' | head -n1 || echo 0)
+
+    declare -A DEDUCTIONS
+    DEDUCTIONS["failed_services"]=25
+    DEDUCTIONS["unclaimed_devices"]=10
+    DEDUCTIONS["upgradable_pkgs"]=1
+
+    if [[ -f "${WORK_DIR}/issue_failed_services" ]]; then
+        score=$((score - DEDUCTIONS["failed_services"]))
+        score_details+="Failed Services (-${DEDUCTIONS[failed_services]}) "
+    fi
+    if [[ -f "${WORK_DIR}/issue_unclaimed_devices" ]]; then
+        score=$((score - DEDUCTIONS["unclaimed_devices"]))
+        score_details+="Unclaimed Devices (-${DEDUCTIONS[unclaimed_devices]}) "
+    fi
+    if [[ -f "${WORK_DIR}/issue_upgradable_pkgs" ]]; then
+        local upgradable_count; upgradable_count=$(<"${WORK_DIR}/issue_upgradable_pkgs")
+        local deduction=$((upgradable_count * DEDUCTIONS["upgradable_pkgs"]))
+        score=$((score - deduction))
+        score_details+="${upgradable_count} Upgradable Pkgs (-${deduction}) "
+    fi
     
-    score=$((score - failed_services * 25 - unclaimed_devices * 10 - upgradable_pkgs * 1))
-    [[ $score -lt 0 ]] && score=0 # Don't let score go below zero
-    if [[ $failed_services -gt 0 ]]; then score_details+="Failed Services (-25) "; fi
-    if [[ $unclaimed_devices -gt 0 ]]; then score_details+="Unclaimed Devices (-10) "; fi
-    if [[ $upgradable_pkgs -gt 0 ]]; then score_details+="${upgradable_pkgs} Upgradable Pkgs (-${upgradable_pkgs}) "; fi
+    [[ $score -lt 0 ]] && score=0
 
     # Create the final score report section
     local score_report="${WORK_DIR}/99-score.log"
@@ -226,7 +249,7 @@ main() {
     fi
 
     # Save the final log file to the designated output directory
-    local report_base_name="${final_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
+    local report_base_name="${final_output_dir}/ubuntu-health-check-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
     echo -e "\n${GREEN}✔ All done. Report saved to '${report_base_name}.log'${NC}"

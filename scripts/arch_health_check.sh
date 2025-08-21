@@ -17,7 +17,6 @@ trap 'echo -e "\nScript interrupted. Cleaning up temp files..."; rm -rf "$WORK_D
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 # --- Default Config & CLI Parsing ---
-SCRIPT_NAME="arch-health-check"
 SCRIPT_VERSION="4.1"
 opt_fast_mode=false
 opt_no_color=false
@@ -45,7 +44,7 @@ while true; do
         -c|--no-color) opt_no_color=true; shift ;;
         -s|--summary) opt_summary_mode=true; shift ;;
         -o|--output-dir) opt_output_dir="$2"; shift 2;;
-        -v|--version) echo "$SCRIPT_NAME v$SCRIPT_VERSION"; exit 0 ;;
+        -v|--version) echo "arch-health-check v$SCRIPT_VERSION"; exit 0 ;;
         -h|--help) show_usage ;;
         --) shift; break ;;
         *) echo "Internal error!"; exit 1 ;;
@@ -83,11 +82,13 @@ check_drivers() {
     log_section "DRIVERS"
     if ! command -v lspci >/dev/null; then log_warn "pciutils not found."; return; fi
     lspci -nnk | grep -A3 'VGA\|Network\|Audio'
-    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then 
-        log_warn "Whoa, unclaimed devices found. These might be broken."
+    if lspci -nnk | grep -i "UNCLAIMED" >/dev/null; then
+        log_warn "Unclaimed PCI devices found. These may lack proper drivers."
         lspci -nnk | grep -i "UNCLAIMED"
-    else 
-        log_info "All PCI devices seem to have drivers."; fi
+        touch "${WORK_DIR}/issue_unclaimed_devices"
+    else
+        log_info "All PCI devices appear to have drivers."
+    fi
 }
 
 check_packages() { 
@@ -95,22 +96,29 @@ check_packages() {
     exec > "$1" 2>&1
     log_section "PACKAGES"
     if ! command -v pacman &>/dev/null; then log_warn "pacman not found, skipping package checks."; return; fi
-    local o; o=$(pacman -Qdtq || true)
-    if [[ -n "$o" ]]; then 
-        local c; c=$(echo "$o" | wc -l)
-        log_warn "$c orphans found."
-        echo "$o" | head -n 5
-        log_info "Pro-tip: nuke 'em with 'sudo pacman -Rns \$(pacman -Qdtq)'"
-    else 
-        log_info "No orphans found."; fi
+    local orphans
+    orphans=$(pacman -Qdtq || true)
+    if [[ -n "$orphans" ]]; then
+        local orphan_count
+        orphan_count=$(echo "$orphans" | wc -l)
+        log_warn "$orphan_count orphaned packages found."
+        echo "$orphans" | head -n 5
+        log_info "Tip: Remove them with 'sudo pacman -Rns \$(pacman -Qdtq)'"
+        touch "${WORK_DIR}/issue_orphans"
+    else
+        log_info "No orphaned packages found."
+    fi
     
-    if ! $opt_fast_mode; then 
-        local m; m=$(pacman -Qk 2>/dev/null | grep -v " 0 missing" || true)
-        if [[ -n "$m" ]]; then 
-            log_warn "Packages with missing files found."
-            echo "$m" | head -n 5
-        else 
-            log_info "No missing package files found."; fi
+    if ! $opt_fast_mode; then
+        local missing_files
+        missing_files=$(pacman -Qk 2>/dev/null | grep -v " 0 missing" || true)
+        if [[ -n "$missing_files" ]]; then
+            log_warn "Packages with missing files were found."
+            echo "$missing_files" | head -n 5
+            touch "${WORK_DIR}/issue_missing_files"
+        else
+            log_info "No missing package files found."
+        fi
     fi
 }
 
@@ -118,11 +126,13 @@ check_services_and_logs() {
     if [[ "$skip_checks" == *services* || "$skip_checks" == *logs* ]]; then log_info "Skipping services/logs check as per config."; return; fi
     exec > "$1" 2>&1
     log_section "SERVICES & LOGS"
-    if ! systemctl is-system-running --quiet; then 
-        log_warn "System state is looking wonky. Checking failed services."
+    if ! systemctl is-system-running --quiet; then
+        log_warn "System state is degraded. Checking for failed services..."
         systemctl --failed --no-pager
-    else 
-        log_info "No failed systemd services."; fi
+        touch "${WORK_DIR}/issue_failed_services"
+    else
+        log_info "Systemd state is running normally."
+    fi
     
     local l; l=$(journalctl -p err..warn -n 10 --no-pager --output=short-monotonic || true)
     if [[ -n "$l" ]]; then 
@@ -175,19 +185,38 @@ main() {
     local final_log_plain="${WORK_DIR}/final_plain.log"
     cat "${WORK_DIR}"/*.log > "$final_log_plain"
     
-    # Calculate a simple health score based on findings
+    # --- Scoring ---
+    # Decouple scoring from log messages for maintainability.
+    # Each check function will now create a small file in WORK_DIR if an issue is found.
     local score=100
     local score_details=""
-    local failed_services; failed_services=$(grep -c 'looking wonky' "$final_log_plain" || true)
-    local unclaimed_devices; unclaimed_devices=$(grep -c 'unclaimed devices found' "$final_log_plain" || true)
-    local orphans; orphans=$(grep -c 'orphans found' "$final_log_plain" || true)
-    local missing_files; missing_files=$(grep -c 'missing files found' "$final_log_plain" || true)
-    score=$((score - failed_services * 25 - unclaimed_devices * 10 - orphans * 5 - missing_files * 5))
-    [[ $score -lt 0 ]] && score=0 # Don't let score go below zero
-    if [[ $failed_services -gt 0 ]]; then score_details+="Failed Services (-25) "; fi
-    if [[ $unclaimed_devices -gt 0 ]]; then score_details+="Unclaimed Devices (-10) "; fi
-    if [[ $orphans -gt 0 ]]; then score_details+="Orphans (-5) "; fi
-    if [[ $missing_files -gt 0 ]]; then score_details+="Missing Files (-5) "; fi
+
+    # Define point deductions for each issue
+    declare -A DEDUCTIONS
+    DEDUCTIONS["failed_services"]=25
+    DEDUCTIONS["unclaimed_devices"]=10
+    DEDUCTIONS["orphans"]=5
+    DEDUCTIONS["missing_files"]=5
+
+    # Check for issue files and calculate the score
+    if [[ -f "${WORK_DIR}/issue_failed_services" ]]; then
+        score=$((score - DEDUCTIONS["failed_services"]))
+        score_details+="Failed Services (-${DEDUCTIONS[failed_services]}) "
+    fi
+    if [[ -f "${WORK_DIR}/issue_unclaimed_devices" ]]; then
+        score=$((score - DEDUCTIONS["unclaimed_devices"]))
+        score_details+="Unclaimed Devices (-${DEDUCTIONS[unclaimed_devices]}) "
+    fi
+    if [[ -f "${WORK_DIR}/issue_orphans" ]]; then
+        score=$((score - DEDUCTIONS["orphans"]))
+        score_details+="Orphans (-${DEDUCTIONS[orphans]}) "
+    fi
+    if [[ -f "${WORK_DIR}/issue_missing_files" ]]; then
+        score=$((score - DEDUCTIONS["missing_files"]))
+        score_details+="Missing Files (-${DEDUCTIONS[missing_files]}) "
+    fi
+    
+    [[ $score -lt 0 ]] && score=0 # Prevent score from going below zero
 
     # Create the final score report section
     local score_report="${WORK_DIR}/99-score.log"
@@ -217,7 +246,7 @@ main() {
     fi
 
     # Save the final log file to the designated output directory
-    local report_base_name="${final_output_dir}/${SCRIPT_NAME}-${TIMESTAMP}"
+    local report_base_name="${final_output_dir}/arch-health-check-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
     echo -e "\n${GREEN}✔ All done. Report saved to '${report_base_name}.log'${NC}"

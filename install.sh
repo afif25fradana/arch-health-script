@@ -21,85 +21,85 @@ source "$COMMON_FUNCTIONS"
 # Setup colors for logging
 setup_colors
 
+# --- Configuration ---
+# Define installation paths and required files
+declare -A PATHS
+PATHS["system_bin"]="/usr/local/bin"
+PATHS["system_share"]="/usr/local/share/health-check"
+PATHS["system_conf"]="/etc/health-check"
+PATHS["user_bin"]="$HOME/.local/bin"
+PATHS["user_share"]="$HOME/.local/share/health-check"
+PATHS["user_conf"]="$HOME/.config/health-check"
+
+REQUIRED_FILES=(
+    "health-check.sh"
+    "health-check.conf"
+    "scripts/arch_health_check.sh"
+    "scripts/Ubuntu_health_check.sh"
+    "common/functions.sh"
+)
+
+# --- Helper Functions ---
+# A single function to run a command, with sudo if needed.
+run_cmd() {
+    if [[ "$INSTALL_MODE" == "system" ]]; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
+
 # --- Determine Installation Mode (System vs. User) ---
 if [[ $EUID -eq 0 ]]; then
-    # Running as root, install system-wide
     INSTALL_MODE="system"
-    TARGET_BIN_DIR="/usr/local/bin"
-    TARGET_SHARE_DIR="/usr/local/share/health-check"
-    TARGET_CONF_DIR="/etc/health-check"
-    log_info "Running with sudo. Installing for all users..."
+    TARGET_BIN_DIR="${PATHS[system_bin]}"
+    TARGET_SHARE_DIR="${PATHS[system_share]}"
+    TARGET_CONF_DIR="${PATHS[system_conf]}"
+    log_info "Running as root. Installing for all users..."
 else
-    # Running as a regular user, install locally
     INSTALL_MODE="user"
-    TARGET_BIN_DIR="$HOME/.local/bin"
-    TARGET_SHARE_DIR="$HOME/.local/share/health-check"
-    TARGET_CONF_DIR="$HOME/.config/health-check"
-    log_info "Running as user. Installing locally into $HOME/.local..."
+    TARGET_BIN_DIR="${PATHS[user_bin]}"
+    TARGET_SHARE_DIR="${PATHS[user_share]}"
+    TARGET_CONF_DIR="${PATHS[user_conf]}"
+    log_info "Running as a regular user. Installing locally..."
 fi
 
 # --- Main Installation Logic ---
 install_suite() {
     log_section "Health Check Suite Installer"
 
-    # 1. Create target directories
-    log_info "Creating directories..."
-    # Use sudo only if installing system-wide
-    if [[ "$INSTALL_MODE" == "system" ]]; then
-        sudo mkdir -p "$TARGET_BIN_DIR"
-        sudo mkdir -p "$TARGET_SHARE_DIR"
-        sudo mkdir -p "$TARGET_CONF_DIR"
-    else
-        mkdir -p "$TARGET_BIN_DIR"
-        mkdir -p "$TARGET_SHARE_DIR"
-        mkdir -p "$TARGET_CONF_DIR"
-    fi
-
-    # 2. Check for required files before copying
+    # 1. Verify required files exist before we start creating directories
     log_info "Verifying required files..."
-    required_files=("health-check.sh" "health-check.conf" "scripts/arch_health_check.sh" "scripts/Ubuntu_health_check.sh" "common/functions.sh")
-    for file in "${required_files[@]}"; do
+    for file in "${REQUIRED_FILES[@]}"; do
         if [[ ! -f "$SOURCE_DIR/$file" ]]; then
             log_error "Required file not found: '$SOURCE_DIR/$file'"
-            log_error "Please make sure you are running this from the root of the cloned repository."
+            log_error "Please run this script from the root of the repository."
             exit 1
         fi
     done
 
-    # 3. Copy files using the correct permissions
-    log_info "Installing launcher to '$TARGET_BIN_DIR/health-check'..."
-    if [[ "$INSTALL_MODE" == "system" ]]; then
-        sudo cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
-        sudo cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
-    else
-        cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
-        cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
-    fi
+    # 2. Create target directories
+    log_info "Creating directories..."
+    run_cmd mkdir -p "$TARGET_BIN_DIR" "$TARGET_SHARE_DIR" "$TARGET_CONF_DIR"
 
-    # 4. Install configuration file
-    log_info "Installing configuration to '$TARGET_CONF_DIR/health-check.conf'..."
+    # 3. Copy files
+    log_info "Installing files..."
+    run_cmd cp "$SOURCE_DIR/health-check.sh" "$TARGET_BIN_DIR/health-check"
+    run_cmd cp -r "$SOURCE_DIR/scripts" "$SOURCE_DIR/common" "$TARGET_SHARE_DIR/"
+
+    # 4. Install configuration file, but don't overwrite an existing one
     local target_conf_file="$TARGET_CONF_DIR/health-check.conf"
     if [[ -f "$target_conf_file" ]]; then
         log_warn "Configuration file already exists at '$target_conf_file'. Skipping."
     else
-        if [[ "$INSTALL_MODE" == "system" ]]; then
-            sudo cp "$SOURCE_DIR/health-check.conf" "$target_conf_file"
-        else
-            cp "$SOURCE_DIR/health-check.conf" "$target_conf_file"
-        fi
+        log_info "Installing configuration to '$target_conf_file'..."
+        run_cmd cp "$SOURCE_DIR/health-check.conf" "$target_conf_file"
     fi
 
     # 5. Set executable permissions
     log_info "Setting executable permissions..."
-    if [[ "$INSTALL_MODE" == "system" ]]; then
-        sudo chmod +x "$TARGET_BIN_DIR/health-check"
-        sudo chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
-        sudo chmod +x "$TARGET_SHARE_DIR/common/functions.sh" # Ensure common functions are executable
-    else
-        chmod +x "$TARGET_BIN_DIR/health-check"
-        chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
-        chmod +x "$TARGET_SHARE_DIR/common/functions.sh" # Ensure common functions are executable
-    fi
+    run_cmd chmod +x "$TARGET_BIN_DIR/health-check"
+    run_cmd chmod +x "$TARGET_SHARE_DIR/scripts"/*.sh
 
     # 6. Final success message
     echo

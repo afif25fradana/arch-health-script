@@ -9,22 +9,19 @@
 set -euo pipefail
 
 # Source common functions
-# Get the absolute path of the script itself, even if it's a symlink or invoked from PATH.
-INSTALLED_SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
-INSTALLED_SCRIPT_DIR=$(dirname "$INSTALLED_SCRIPT_PATH")
+# Determine the script's absolute directory to reliably locate other files.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+SHARE_DIR="$SCRIPT_DIR" # Default to the script's own directory
 
-# Determine the shared directory based on the script's installed path
-# If installed system-wide, INSTALLED_SCRIPT_DIR will be /usr/local/bin
-# If installed user-local, INSTALLED_SCRIPT_DIR will be ~/.local/bin
-# In both cases, the shared directory is typically one level up from bin, then into share/health-check
-if [[ "$INSTALLED_SCRIPT_DIR" == "/usr/local/bin" ]]; then
-    SHARE_DIR="/usr/local/share/health-check"
-elif [[ "$INSTALLED_SCRIPT_DIR" == "$HOME/.local/bin" ]]; then
-    SHARE_DIR="$HOME/.local/share/health-check"
-else
-    # Fallback for development or unusual installations (e.g., running from source repo)
-    # In this case, assume common/ and scripts/ are relative to the script's location
-    SHARE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+# If the script is installed, the share directory will be in a different location.
+# We check if the 'common' directory exists relative to the script. If not, we assume
+# it's an installed version and look in the standard share locations.
+if [[ ! -d "$SCRIPT_DIR/common" ]]; then
+    if [[ -d "/usr/local/share/health-check" ]]; then
+        SHARE_DIR="/usr/local/share/health-check"
+    elif [[ -d "$HOME/.local/share/health-check" ]]; then
+        SHARE_DIR="$HOME/.local/share/health-check"
+    fi
 fi
 
 COMMON_FUNCTIONS="$SHARE_DIR/common/functions.sh"
@@ -42,17 +39,32 @@ log_info "Health Check Suite - Master Launcher v2.0"
 log_info "Detecting OS and launching appropriate health check script..."
 
 # --- OS Detection ---
-if command -v pacman &>/dev/null; then
-    SPECIALIZED_SCRIPT="$SHARE_DIR/scripts/arch_health_check.sh"
-elif command -v apt-get &>/dev/null; then
-    SPECIALIZED_SCRIPT="$SHARE_DIR/scripts/Ubuntu_health_check.sh"
-elif command -v dnf &>/dev/null; then
-    log_info "Fedora/RHEL based system detected. No specialized script is available yet."
-    exit 0 # Exit gracefully, not an error
+# Use /etc/os-release for a more reliable and portable way to identify the OS.
+if [[ -f /etc/os-release ]]; then
+    # Source the file to get access to variables like ID and ID_LIKE
+    . /etc/os-release
 else
-    log_error "Unsupported distribution. This suite currently supports Arch and Debian/Ubuntu based systems."
+    log_error "Cannot determine OS: /etc/os-release not found."
     exit 1
 fi
+
+# Check the OS ID and its "like" values (e.g., ubuntu is "like" debian)
+case "${ID_LIKE:-$ID}" in
+    *arch*)
+        SPECIALIZED_SCRIPT="$SHARE_DIR/scripts/arch_health_check.sh"
+        ;;
+    *debian*|*ubuntu*)
+        SPECIALIZED_SCRIPT="$SHARE_DIR/scripts/Ubuntu_health_check.sh"
+        ;;
+    *fedora*|*rhel*)
+        log_info "Fedora/RHEL based system detected. No specialized script is available yet."
+        exit 0 # Exit gracefully, not an error
+        ;;
+    *)
+        log_error "Unsupported distribution: ${PRETTY_NAME:-$ID}. This suite currently supports Arch and Debian/Ubuntu based systems."
+        exit 1
+        ;;
+esac
 
 # Check if the specialized script actually exists and is executable
 if [[ ! -x "$SPECIALIZED_SCRIPT" ]]; then
