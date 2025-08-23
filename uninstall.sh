@@ -1,30 +1,24 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Health Check Suite Uninstaller v1.0
+# Health Check Suite Uninstaller
 # Removes the suite from system-wide or user-local locations.
 # ============================================================================
 
 set -euo pipefail
 
-# Source common functions for logging and colors
-# This is a bit tricky since we are uninstalling. We'll try to find it
-# but have fallbacks if it's already gone.
 SOURCE_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
-COMMON_FUNCTIONS="$SOURCE_DIR/common/functions.sh"
+COMMON_FUNCTIONS="$SOURCE_DIR/src/common/functions.sh"
 if [[ -f "$COMMON_FUNCTIONS" ]]; then
     source "$COMMON_FUNCTIONS"
     setup_colors
 else
-    # Fallback functions if common library is missing
     setup_colors() { RED=""; GREEN=""; YELLOW=""; BLUE=""; NC=""; }
     log_info() { echo "[INFO] $1"; }
-    log_warn() { echo "[WARN] $1"; }
-    log_error(){ echo "[ERROR] $1"; }
+    log_warn() { echo "${YELLOW}[WARN]${NC} $1"; }
+    log_error(){ echo "${RED}[ERROR]${NC} $1"; }
     log_section() { echo -e "\n=== $1 ===\n"; }
 fi
-setup_colors
 
-# --- Configuration ---
 declare -A PATHS
 PATHS["system_bin"]="/usr/local/bin"
 PATHS["system_share"]="/usr/local/share/health-check"
@@ -33,79 +27,88 @@ PATHS["user_bin"]="$HOME/.local/bin"
 PATHS["user_share"]="$HOME/.local/share/health-check"
 PATHS["user_conf"]="$HOME/.config/health-check"
 
-# --- Helper Functions ---
 run_cmd() {
-    if [[ "$INSTALL_MODE" == "system" ]]; then
+    if [[ "$UNINSTALL_MODE" == "system" ]]; then
         sudo "$@"
     else
         "$@"
     fi
 }
 
-# --- Determine Installation Mode (System vs. User) ---
-if [[ $EUID -eq 0 ]]; then
-    INSTALL_MODE="system"
-    TARGET_BIN_DIR="${PATHS[system_bin]}"
-    TARGET_SHARE_DIR="${PATHS[system_share]}"
-    log_info "Running as root. Uninstalling from system locations..."
-else
-    INSTALL_MODE="user"
-    TARGET_BIN_DIR="${PATHS[user_bin]}"
-    TARGET_SHARE_DIR="${PATHS[user_share]}"
-    log_info "Running as a regular user. Uninstalling from local locations..."
-fi
+set_uninstall_mode() {
+    if (($EUID == 0)); then
+        UNINSTALL_MODE="system"
+        TARGET_BIN_DIR="${PATHS[system_bin]}"
+        TARGET_SHARE_DIR="${PATHS[system_share]}"
+        log_info "Running as root. System-wide uninstall."
+    else
+        UNINSTALL_MODE="user"
+        TARGET_BIN_DIR="${PATHS[user_bin]}"
+        TARGET_SHARE_DIR="${PATHS[user_share]}"
+        log_info "Running as user. Local uninstall."
+    fi
+}
 
-# --- Main Uninstallation Logic ---
-uninstall_suite() {
-    log_section "Health Check Suite Uninstaller"
+remove_path() {
+    local path_to_remove="$1"
+    if [[ ! -e "$path_to_remove" ]]; then
+        log_info "Already removed: $path_to_remove"
+        return
+    fi
+    log_info "Removing '$path_to_remove'..."
+    run_cmd rm -rf "$path_to_remove"
+}
 
-    # Use a function for removal to handle sudo correctly
-    remove_path() {
-        local path_to_remove="$1"
-        if [[ ! -e "$path_to_remove" ]]; then
-            log_info "Already removed: $path_to_remove"
-            return
-        fi
-        log_info "Removing '$path_to_remove'..."
-        run_cmd rm -rf "$path_to_remove"
-    }
-
-    # 1. Remove the main executable and shared files
+remove_files() {
     remove_path "$TARGET_BIN_DIR/health-check"
     remove_path "$TARGET_SHARE_DIR"
-    
-    # 2. Ask to remove configuration files
-    prompt_for_config_removal() {
-        local config_dir="$1"
-        local dir_owner="$2"
-        if [[ -d "$config_dir" ]]; then
-            echo
-            log_warn "A ${dir_owner} configuration directory was found at '$config_dir'."
-            read -p "Do you want to remove it? [y/N] " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
-                remove_path "$config_dir"
+}
+
+prompt_for_config_removal() {
+    local config_dir="$1"
+    local dir_owner="$2"
+    local requires_sudo=${3:-false}
+
+    if [[ -d "$config_dir" ]]; then
+        echo
+        log_warn "Found $dir_owner configuration directory at '$config_dir'."
+        local prompt="Do you want to remove it?"
+        $requires_sudo && prompt+=" (requires sudo)"
+        read -p "$prompt [y/N] " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            if $requires_sudo; then
+                sudo rm -rf "$config_dir"
             else
-                log_info "Skipping ${dir_owner} configuration removal."
+                remove_path "$config_dir"
             fi
+        else
+            log_info "Skipping $dir_owner configuration removal."
         fi
-    }
+    fi
+}
+
+main() {
+    log_section "Health Check Suite Uninstaller"
+    set_uninstall_mode
+    remove_files
 
     prompt_for_config_removal "${PATHS[user_conf]}" "user"
-    if [[ "$INSTALL_MODE" == "system" ]]; then
+    if (($EUID == 0)); then
         prompt_for_config_removal "${PATHS[system_conf]}" "system"
+    else
+        prompt_for_config_removal "${PATHS[system_conf]}" "system" true
     fi
 
     echo
     log_info "✅ Health Check Suite uninstalled successfully!"
     echo
 
-    if [[ "$INSTALL_MODE" == "user" ]]; then
-        log_warn "You may want to remove '$HOME/.local/bin' from your PATH in"
-        log_warn "your ~/.bashrc or ~/.zshrc if you no longer need it."
+    if [[ "$UNINSTALL_MODE" == "user" ]]; then
+        log_warn "Consider removing '$HOME/.local/bin' from your PATH in"
+        log_warn "~/.bashrc or ~/.zshrc if no longer needed."
         echo
     fi
 }
 
-# Run the uninstaller
-uninstall_suite
+main

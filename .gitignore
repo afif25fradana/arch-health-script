@@ -1,2 +1,10 @@
-# Ignore output directory for generated reports
-/reports/
+# Generated reports and logs
+/logs/
+*.log
+
+# IDE and editor-specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

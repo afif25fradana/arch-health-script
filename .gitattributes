@@ -1,9 +1,9 @@
-# Atur perilaku default untuk semua file
+# Set default behavior for all files to prevent issues with line endings.
 * text=auto eol=lf
 
-# Pastikan file skrip shell SELALU menggunakan LF, karena akan dijalankan di Linux
+# Ensure shell scripts always use LF line endings, as they are run on Linux.
 *.sh text eol=lf
 
-# Pastikan file Windows (jika ada) menggunakan CRLF
+# Ensure Windows batch files (if any) use CRLF line endings.
 *.bat text eol=crlf
 *.cmd text eol=crlf
