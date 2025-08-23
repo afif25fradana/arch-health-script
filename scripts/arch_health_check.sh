@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Arch Linux Health Check - v4.1 (Fixed)
+# Arch Linux Health Check - v4.1
 # ============================================================================
 
 set -euo pipefail
 
 # --- Source common library & setup directories ---
-# The path is relative to the script's location *after installation*.
 SCRIPT_DIR_SELF=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 source "$SCRIPT_DIR_SELF/../common/functions.sh"
 
 # --- Temp directory & safety trap ---
-# This ensures temp files are deleted even if the script is interrupted (Ctrl+C).
 WORK_DIR=$(mktemp -d "/tmp/arch-check.XXXXXX")
 trap 'echo -e "\nScript interrupted. Cleaning up temp files..."; rm -rf "$WORK_DIR"; exit 1' SIGINT SIGTERM
 trap 'rm -rf "$WORK_DIR"' EXIT
@@ -21,7 +19,7 @@ SCRIPT_VERSION="4.1"
 opt_fast_mode=false
 opt_no_color=false
 opt_summary_mode=false
-opt_output_dir="" # Will be populated from config or default
+opt_output_dir=""
 
 show_usage() {
     echo "Usage: $0 [options]"
@@ -34,7 +32,6 @@ show_usage() {
     exit 0
 }
 
-# FIXED: Corrected getopt string for summary flag (-s). It's a boolean, not an argument.
 OPTS=$(getopt -o fcso:vh --long fast,no-color,summary,output-dir:,version,help -n "$0" -- "$@")
 if [ $? != 0 ]; then echo "Failed parsing options." >&2; exit 1; fi
 eval set -- "$OPTS"
@@ -51,7 +48,7 @@ while true; do
     esac
 done
 
-# --- Check Functions (designed to be run in parallel) ---
+# --- Check Functions ---
 check_system_info() { 
     exec > "$1" 2>&1
     log_section "SYSTEM & KERNEL"
@@ -146,7 +143,6 @@ check_services_and_logs() {
 main() {
     setup_colors
     
-    # Load configuration from system-wide or user-specific paths
     local system_config_file="/etc/health-check/health-check.conf"
     local user_config_file="$HOME/.config/health-check/health-check.conf"
     local config_file=""
@@ -160,45 +156,36 @@ main() {
     local warning_score; warning_score=$(get_config "$config_file" "warning_score" "75")
     local critical_score; critical_score=$(get_config "$config_file" "critical_score" "50")
     local log_dir_conf; log_dir_conf=$(get_config "$config_file" "log_dir" "$HOME/logs")
-    # CLI option -o overrides the config file setting
     local final_output_dir=${opt_output_dir:-$log_dir_conf}
 
-    # FIXED: Define TIMESTAMP for unique report filenames
     local TIMESTAMP; TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
     echo -e "${BLUE}=== Kicking off the Arch Health Check v${SCRIPT_VERSION} ===${NC}"
     mkdir -p "$final_output_dir"
 
-    # Check for dependencies and suggest installation if missing
     local arch_deps=("lspci:pciutils" "sensors:lm-sensors")
     local missing_pkgs; missing_pkgs=$(check_dependencies arch_deps)
 
-    # Run checks in parallel for speed, sending output to log files in the temp directory
     log_info "Running checks in parallel... (This might take a moment)"
     check_system_info  "${WORK_DIR}/01-system.log" &
     check_hardware     "${WORK_DIR}/02-hardware.log" &
     check_drivers      "${WORK_DIR}/03-drivers.log" &
     check_packages     "${WORK_DIR}/04-packages.log" &
     check_services_and_logs "${WORK_DIR}/05-services.log" &
-    wait # Wait for all background jobs to finish
+    wait
     
-    # Combine individual logs into one master log for scoring
     local final_log_plain="${WORK_DIR}/final_plain.log"
     cat "${WORK_DIR}"/*.log > "$final_log_plain"
     
     # --- Scoring ---
-    # Decouple scoring from log messages for maintainability.
-    # Each check function will now create a small file in WORK_DIR if an issue is found.
     local score=100
     local score_details=""
 
-    # Define point deductions for each issue
     declare -A DEDUCTIONS
     DEDUCTIONS["failed_services"]=25
     DEDUCTIONS["unclaimed_devices"]=10
     DEDUCTIONS["orphans"]=5
     DEDUCTIONS["missing_files"]=5
 
-    # Check for issue files and calculate the score
     if [[ -f "${WORK_DIR}/issue_failed_services" ]]; then
         score=$((score - DEDUCTIONS["failed_services"]))
         score_details+="Failed Services (-${DEDUCTIONS[failed_services]}) "
@@ -216,9 +203,8 @@ main() {
         score_details+="Missing Files (-${DEDUCTIONS[missing_files]}) "
     fi
     
-    [[ $score -lt 0 ]] && score=0 # Prevent score from going below zero
+    [[ $score -lt 0 ]] && score=0
 
-    # Create the final score report section
     local score_report="${WORK_DIR}/99-score.log"
     { 
         log_section "HEALTH SCORE"
@@ -232,11 +218,9 @@ main() {
         fi
     } > "$score_report"
     
-    # Combine all logs for final colored output
     local final_log_colored; final_log_colored=$(mktemp)
     cat "${WORK_DIR}"/*.log "$score_report" > "$final_log_colored"
 
-    # Display summary or full report based on user flag
     if $opt_summary_mode; then
         echo -e "\n${BLUE}=== SUMMARY ===${NC}"
         grep '\[WARN\]\|\[ERROR\]' "$final_log_colored" || log_info "No warnings or errors to display."
@@ -245,7 +229,6 @@ main() {
         cat "$final_log_colored"
     fi
 
-    # Save the final log file to the designated output directory
     local report_base_name="${final_output_dir}/arch-health-check-${TIMESTAMP}"
     mv "$final_log_colored" "${report_base_name}.log"
 
@@ -255,5 +238,4 @@ main() {
     fi
 }
 
-# Execute the main function with all passed arguments
 main "$@"
