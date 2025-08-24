@@ -3,6 +3,27 @@
 # Common Functions Library for Health Check Suite
 # ============================================================================
 
+# Global flag for public mode, set by specialized scripts
+opt_public_mode=false
+
+redact_sensitive_info() {
+    local content="$1"
+    # Redact UUIDs (e.g., XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX)
+    content=$(echo "$content" | sed -E 's/[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}/[REDACTED_UUID]/g')
+    # Redact Machine IDs (similar to UUIDs, often found in /etc/machine-id)
+    content=$(echo "$content" | sed -E 's/[0-9a-fA-F]{32}/[REDACTED_MACHINE_ID]/g')
+    echo "$content"
+}
+
+log() {
+    local type="$1"
+    local message="$2"
+    local color="$3"
+    if "$opt_public_mode"; then
+        message=$(redact_sensitive_info "$message")
+    fi
+    echo -e "${color}[$type]${NC} $message"
+}
 
 setup_colors() {
     if [[ -t 1 && "${opt_no_color:-false}" == "false" ]]; then
@@ -18,13 +39,6 @@ setup_colors() {
         BLUE=""
         NC=""
     fi
-}
-
-log() {
-    local type="$1"
-    local message="$2"
-    local color="$3"
-    echo -e "${color}[$type]${NC} $message"
 }
 
 log_info() { log "INFO" "$1" "$GREEN"; }

@@ -73,9 +73,19 @@ The uninstaller will automatically detect the installation type and remove all t
 ## 📸 Screenshots
 
 <p align="center">
-  <img src="https://via.placeholder.com/400x300.png?text=Health+Check+Full+Report" alt="Health Check Full Report" width="48%">
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756044002/Screenshot_20250824_204801_bschz6.png" alt="Health Check Install" width="48%">
   &nbsp;&nbsp;
-  <img src="https://via.placeholder.com/400x300.png?text=Health+Check+Summary+Mode" alt="Health Check Summary Mode" width="48%">
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756044009/Screenshot_20250824_204829_cxo6es.png" alt="Health Check Summary 1" width="48%">
+</p>
+<p align="center">
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756046061/Screenshot_20250824_212710_gexycm.png" alt="Health Check Report 1" width="48%">
+  &nbsp;&nbsp;
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756046059/Screenshot_20250824_212728_v7b9zh.png" alt="Health Check Report 2" width="48%">
+</p>
+<p align="center">
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756044003/Screenshot_20250824_204926_epvfmb.png" alt="Health Check Uninstall" width="48%">
+  &nbsp;&nbsp;
+  <img src="https://res.cloudinary.com/dta7ppwxj/image/upload/v1756044000/Screenshot_20250824_204909_ykrerc.png" alt="Health Check Help" width="48%">
 </p>
 
 ---

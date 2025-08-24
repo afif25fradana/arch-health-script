@@ -25,6 +25,7 @@ Usage: $0 [options]
   -c, --no-color    Disable color output.
   -s, --summary     Only show a brief summary.
   -o, --output-dir  Where to save reports (default: ~/logs).
+  --public          Censor sensitive information for sharing.
   -h, --help        Show this help message.
 EOF
     exit 0
@@ -32,7 +33,7 @@ EOF
 
 parse_cli_args() {
     local opts
-    opts=$(getopt -o fcso:h --long fast,no-color,summary,output-dir:,help -n "$0" -- "$@")
+    opts=$(getopt -o fcso:h --long fast,no-color,summary,output-dir:,public,help -n "$0" -- "$@")
     if (($? != 0)); then
         log_error "Failed parsing options."
         exit 1
@@ -44,6 +45,7 @@ parse_cli_args() {
             -c | --no-color) opt_no_color=true; shift ;;
             -s | --summary) opt_summary_mode=true; shift ;;
             -o | --output-dir) opt_output_dir="$2"; shift 2 ;;
+            --public) opt_public_mode=true; shift ;;
             -h | --help) show_usage ;;
             --) shift; break ;;
             *) log_error "Internal error!"; exit 1 ;;
@@ -54,7 +56,9 @@ parse_cli_args() {
 check_system_info() {
     exec >"$1" 2>&1
     log_section "SYSTEM & KERNEL"
-    hostnamectl
+    while read -r line; do
+        log_info "$line"
+    done < <(hostnamectl)
     echo
     log_info "Kernel: $(uname -r)"
     log_info "Distro: $(lsb_release -ds)"
@@ -63,13 +67,25 @@ check_system_info() {
 check_hardware() {
     exec >"$1" 2>&1
     log_section "HARDWARE"
-    lscpu | grep -E 'Model name|CPU\(s\)' || log_warn "lscpu not found"
+    while read -r line; do
+        log_info "$line"
+    done < <(lscpu | grep -E 'Model name|CPU\(s\)')
     log_subsection "Memory"
-    free -h
+    while read -r line; do
+        log_info "$line"
+    done < <(free -h)
     log_subsection "Storage"
-    lsblk -f
+    while read -r line; do
+        log_info "$line"
+    done < <(lsblk -f)
     log_subsection "Temps"
-    if command -v sensors &>/dev/null; then sensors; else log_warn "lm-sensors not found."; fi
+    if command -v sensors &>/dev/null; then
+        while read -r line; do
+            log_info "$line"
+        done < <(sensors)
+    else
+        log_warn "lm-sensors not found."
+    fi
 }
 
 check_drivers() {
