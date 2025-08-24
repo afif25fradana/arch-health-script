@@ -36,16 +36,21 @@ run_cmd() {
 }
 
 set_uninstall_mode() {
-    if (($EUID == 0)); then
+    if [[ -f "${PATHS[system_bin]}/health-check" ]]; then
         UNINSTALL_MODE="system"
         TARGET_BIN_DIR="${PATHS[system_bin]}"
         TARGET_SHARE_DIR="${PATHS[system_share]}"
-        log_info "Running as root. System-wide uninstall."
-    else
+        log_info "System-wide installation detected."
+        if (($EUID != 0)); then
+            log_warn "Sudo is required to remove system-wide files."
+        fi
+    elif [[ -f "${PATHS[user_bin]}/health-check" ]]; then
         UNINSTALL_MODE="user"
         TARGET_BIN_DIR="${PATHS[user_bin]}"
         TARGET_SHARE_DIR="${PATHS[user_share]}"
-        log_info "Running as user. Local uninstall."
+        log_info "Local user installation detected."
+    else
+        UNINSTALL_MODE="none"
     fi
 }
 
@@ -60,6 +65,10 @@ remove_path() {
 }
 
 remove_files() {
+    if [[ "$UNINSTALL_MODE" == "none" ]]; then
+        log_info "No installation found to remove."
+        return
+    fi
     remove_path "$TARGET_BIN_DIR/health-check"
     remove_path "$TARGET_SHARE_DIR"
 }
@@ -91,6 +100,12 @@ prompt_for_config_removal() {
 main() {
     log_section "Health Check Suite Uninstaller"
     set_uninstall_mode
+
+    if [[ "$UNINSTALL_MODE" == "none" ]]; then
+        log_info "Health Check Suite is not installed."
+        exit 0
+    fi
+
     remove_files
 
     prompt_for_config_removal "${PATHS[user_conf]}" "user"

@@ -25,7 +25,6 @@ Usage: $0 [options]
   -c, --no-color    Disable color output.
   -s, --summary     Only show a brief summary.
   -o, --output-dir  Where to save reports (default: ~/logs).
-  -v, --version     Show script version.
   -h, --help        Show this help message.
 EOF
     exit 0
@@ -33,7 +32,7 @@ EOF
 
 parse_cli_args() {
     local opts
-    opts=$(getopt -o fcso:vh --long fast,no-color,summary,output-dir:,version,help -n "$0" -- "$@")
+    opts=$(getopt -o fcso:h --long fast,no-color,summary,output-dir:,help -n "$0" -- "$@")
     if (($? != 0)); then
         log_error "Failed parsing options."
         exit 1
@@ -45,7 +44,6 @@ parse_cli_args() {
             -c | --no-color) opt_no_color=true; shift ;;
             -s | --summary) opt_summary_mode=true; shift ;;
             -o | --output-dir) opt_output_dir="$2"; shift 2 ;;
-            -v | --version) echo "Ubuntu/Debian Health Check"; exit 0 ;;
             -h | --help) show_usage ;;
             --) shift; break ;;
             *) log_error "Internal error!"; exit 1 ;;

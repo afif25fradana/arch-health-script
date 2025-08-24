@@ -20,6 +20,7 @@ Get up and running in seconds. The installer will copy the scripts to a standard
 
 2.  Run the installer (it will handle permissions for you)
     ```bash
+    chmod +x install.sh  # Grant execute permissions
     ./install.sh         # Recommended: Installs locally for your user
     ```
     OR
@@ -40,8 +41,15 @@ After installation, you can safely delete the cloned `health-check` folder.
 
 To remove the health check suite, run the `uninstall.sh` script from the cloned repository directory.
 
+**Note:** If you encounter a "Permission denied" error when running `./uninstall.sh`, you may need to grant execute permissions first.
+
+Then, proceed with uninstallation:
 ```bash
+chmod +x uninstall.sh  # Grant execute permissions
 ./uninstall.sh       # For local user installations
+```
+OR
+```bash
 sudo ./uninstall.sh  # For system-wide installations
 ```
 
@@ -59,6 +67,16 @@ The uninstaller will automatically detect the installation type and remove all t
 *   **Safe by Design**: The script runs without requiring `sudo`, ensuring system safety and user control.
 *   **Highly Portable**: Uses POSIX-compliant shell features and `/etc/os-release` for reliable OS detection.
 *   **Customizable**: Tweak behavior via a simple configuration file (skip checks, change log directories, adjust scoring).
+
+---
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="https://via.placeholder.com/400x300.png?text=Health+Check+Full+Report" alt="Health Check Full Report" width="48%">
+  &nbsp;&nbsp;
+  <img src="https://via.placeholder.com/400x300.png?text=Health+Check+Summary+Mode" alt="Health Check Summary Mode" width="48%">
+</p>
 
 ---
 ## 🏗️ Project Structure
@@ -93,7 +111,6 @@ All options are passed through the main `health-check` command.
 | `-s` | `--summary`     | Displays only a brief summary in the terminal. |
 | `-c` | `--no-color`    | Disables colorized output.                   |
 | `-o` | `--output-dir`  | Specifies where to save report files.        |
-| `-v` | `--version`     | Shows the script version and exits.          |
 | `-h` | `--help`        | Shows the help message.                      |
 
 **Example:**
