@@ -6,8 +6,10 @@
 set -euo pipefail
 
 find_share_dir() {
+    local script_path
+    script_path=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")
     local script_dir
-    script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+    script_dir=$(dirname "$script_path")
 
     if [[ -d "$script_dir/common" ]]; then
         echo "$script_dir"
@@ -87,14 +89,6 @@ main() {
     setup_colors
 
     log_info "Health Check Suite - Master Launcher"
-
-    local core_deps=("lsb_release:lsb-release")
-    local missing_pkgs
-    missing_pkgs=$(check_dependencies "${core_deps[@]}")
-    if [[ -n "$missing_pkgs" ]]; then
-        log_error "Missing core dependencies: $missing_pkgs. Please install them."
-        exit 1
-    fi
 
     log_info "Detecting OS and launching the appropriate health check script..."
     detect_and_run_os_script "$share_dir" "$@"

@@ -14,6 +14,7 @@ if [[ ! -f "$COMMON_FUNCTIONS" ]]; then
     exit 1
 fi
 source "$COMMON_FUNCTIONS"
+
 setup_colors
 
 declare -A PATHS
@@ -54,6 +55,11 @@ set_install_mode() {
         TARGET_CONF_DIR="${PATHS[user_conf]}"
         log_info "Running as user. Local installation."
     fi
+
+    if [[ "$INSTALL_MODE" == "system" && ! -x "/usr/bin/sudo" ]]; then
+        log_error "sudo is required for system-wide installation, but it's not installed or not in PATH."
+        exit 1
+    fi
 }
 
 verify_files() {
@@ -73,6 +79,16 @@ create_dirs() {
 
 copy_files() {
     log_info "Installing files..."
+
+    if [[ ! -d "$SOURCE_DIR/src/scripts" ]]; then
+        log_error "Source directory for scripts not found: $SOURCE_DIR/src/scripts"
+        exit 1
+    fi
+    if [[ ! -d "$SOURCE_DIR/src/common" ]]; then
+        log_error "Source directory for common functions not found: $SOURCE_DIR/src/common"
+        exit 1
+    fi
+
     run_cmd cp "$SOURCE_DIR/src/health-check.sh" "$TARGET_BIN_DIR/health-check"
     run_cmd cp -r "$SOURCE_DIR/src/scripts" "$SOURCE_DIR/src/common" "$TARGET_SHARE_DIR/"
 
@@ -110,7 +126,7 @@ main() {
     if [[ "$INSTALL_MODE" == "user" ]]; then
         log_warn "Make sure '$TARGET_BIN_DIR' is in your PATH."
         log_warn "Add to your ~/.bashrc or ~/.zshrc:"
-        echo -e "${YELLOW}  export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+        echo -e "${YELLOW}  export PATH=\"$HOME/.local/bin:$PATH\"${NC}"
         echo
     fi
 

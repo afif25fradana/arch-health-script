@@ -49,8 +49,11 @@ log_subsection() { echo -e "${BLUE}--- $1 ---${NC}"; }
 log_section() {
     local title=" $1 "
     local padding_char="─"
-    local terminal_width
-    terminal_width=$(tput cols 2>/dev/null || echo 80)
+    local terminal_width=80
+    if command -v tput &>/dev/null;
+        then
+        terminal_width=$(tput cols 2>/dev/null || echo 80)
+    fi
     local title_len=${#title}
     local padding_len=$(((terminal_width - title_len) / 2))
 

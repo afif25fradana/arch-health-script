@@ -82,11 +82,11 @@ prompt_for_config_removal() {
         echo
         log_warn "Found $dir_owner configuration directory at '$config_dir'."
         local prompt="Do you want to remove it?"
-        $requires_sudo && prompt+=" (requires sudo)"
+        [[ "$requires_sudo" == "true" ]] && prompt+=" (requires sudo)"
         read -p "$prompt [y/N] " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            if $requires_sudo; then
+            if [[ "$requires_sudo" == "true" ]]; then
                 sudo rm -rf "$config_dir"
             else
                 remove_path "$config_dir"
@@ -109,11 +109,7 @@ main() {
     remove_files
 
     prompt_for_config_removal "${PATHS[user_conf]}" "user"
-    if (($EUID == 0)); then
-        prompt_for_config_removal "${PATHS[system_conf]}" "system"
-    else
-        prompt_for_config_removal "${PATHS[system_conf]}" "system" true
-    fi
+    prompt_for_config_removal "${PATHS[system_conf]}" "system" "true"
 
     echo
     log_info "✅ Health Check Suite uninstalled successfully!"
