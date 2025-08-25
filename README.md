@@ -113,6 +113,7 @@ The suite is organized into a clean, maintainable structure:
 │   │   └── functions.sh         # Shared library for logging, colors, etc.
 │   └── scripts/
 │       ├── arch_health_check.sh # Arch-specific checks
+│       ├── common_checks.sh     # Common checks used by other scripts
 │       └── Ubuntu_health_check.sh # Debian/Ubuntu-specific checks
 ├── install.sh                   # Installer
 ├── uninstall.sh                 # Uninstaller
